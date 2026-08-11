@@ -177,6 +177,7 @@ button {
   color: #b42318;
 }
 
+.primary-button:disabled,
 .ghost-button:disabled,
 .icon-button:disabled,
 .remove-button:disabled {
@@ -458,6 +459,35 @@ button {
 
 .resume-library-actions button {
   flex: 1 1 110px;
+}
+
+.import-panel .section-heading-row {
+  align-items: flex-start;
+}
+
+.import-status {
+  min-height: 18px;
+  color: #667085;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.45;
+  text-align: right;
+}
+
+.import-status.error {
+  color: #b42318;
+}
+
+.import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.import-actions .ghost-button,
+.import-actions .primary-button {
+  flex: 1 1 160px;
 }
 
 .contact-heading {
