@@ -19,6 +19,16 @@ http://localhost:5173/
 
 点击页面中的 `导出 PDF`，在浏览器打印窗口中选择 `另存为 PDF`。
 
+## 部署到 GitHub Pages
+
+仓库已配置 GitHub Actions 自动部署。推送到 `main` 后，到 GitHub 仓库的 `Settings -> Pages`，把 `Build and deployment` 的 `Source` 选择为 `GitHub Actions`。
+
+线上访问地址：
+
+```text
+https://ruanchuanli.github.io/resumeBuilder/
+```
+
 ## 功能
 
 - 上传头像并同步显示到简历模板
