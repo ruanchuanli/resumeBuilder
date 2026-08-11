@@ -31,6 +31,7 @@ const LEGACY_STORAGE_KEYS = [
   'react-resume-builder-data-v1',
 ]
 const MAX_AVATAR_SIZE = 2 * 1024 * 1024
+const MAX_IMPORT_PDF_SIZE = 12 * 1024 * 1024
 
 const accentOptions = [
   { name: '湖绿', value: '#0f766e' },
