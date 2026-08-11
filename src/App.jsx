@@ -1221,28 +1221,48 @@ function getTimelineItemParts(item, measurements) {
   return measurements.itemParts?.[item.key] || null
 }
 
-function getTimelineFragmentHeight(item, detailStart, detailCount, measurements) {
+function isStandaloneTimelineLabel(text) {
+  return /^项目职责：\s*$/.test(String(text || ''))
+}
+
+function getMinimumDetailCount(details, detailStart) {
+  return isStandaloneTimelineLabel(details[detailStart]) &&
+    detailStart + 1 < details.length
+    ? 2
+    : 1
+}
+
+function getTimelineFragmentHeight(
+  item,
+  detailStart,
+  detailCount,
+  measurements,
+) {
   const parts = getTimelineItemParts(item, measurements)
 
   if (!parts) {
     return measurements.items[item.key] || 0
   }
 
+  const isContinuation = detailStart > 0
   const detailHeight = parts.details
     .slice(detailStart, detailStart + detailCount)
     .reduce((sum, height) => sum + height, 0)
   const listHeight = detailCount > 0 ? parts.listOverhead + detailHeight : 0
 
-  return parts.chrome + parts.head + listHeight
+  return parts.chrome + (isContinuation ? 0 : parts.head) + listHeight
 }
 
 function createTimelineFragment(item, detailStart, details, partIndex) {
+  const isContinuation = detailStart > 0
+
   return {
     ...item,
     key:
       partIndex === 0 && details.length === item.details.length
         ? item.key
         : `${item.key}:part-${partIndex}-${detailStart}`,
+    isContinuation,
     details,
   }
 }
@@ -1287,20 +1307,28 @@ function paginateSections(sectionDescriptors, measurements) {
       32,
       sectionHeight - itemHeights.reduce((sum, height) => sum + height, 0),
     )
-    let chunk = {
-      ...section,
-      items: [],
-    }
-    let chunkHeight = sectionOverhead
+    const sectionTitleHeight = measurements.sectionParts?.[section.key]?.title || 0
+    const continuationSectionOverhead = Math.max(
+      0,
+      sectionOverhead - sectionTitleHeight,
+    )
+    let hasCommittedSectionChunk = false
+    let chunk
+    let chunkHeight
     let splitPartIndex = 0
 
     const resetChunk = () => {
       chunk = {
         ...section,
+        isContinuation: hasCommittedSectionChunk,
         items: [],
       }
-      chunkHeight = sectionOverhead
+      chunkHeight = hasCommittedSectionChunk
+        ? continuationSectionOverhead
+        : sectionOverhead
     }
+
+    resetChunk()
 
     const commitChunk = () => {
       if (!chunk.items.length) {
@@ -1310,6 +1338,7 @@ function paginateSections(sectionDescriptors, measurements) {
       currentPage = pages[pages.length - 1]
       pushSectionToPages(pages, chunk)
       currentPage.remainingHeight -= chunkHeight
+      hasCommittedSectionChunk = true
       resetChunk()
     }
 
@@ -1333,10 +1362,14 @@ function paginateSections(sectionDescriptors, measurements) {
       while (detailStart < item.details.length) {
         currentPage = pages[pages.length - 1]
         let availableHeight = currentPage.remainingHeight - chunkHeight
+        const minimumDetailCount = getMinimumDetailCount(
+          item.details,
+          detailStart,
+        )
         const minimumHeight = getTimelineFragmentHeight(
           item,
           detailStart,
-          1,
+          minimumDetailCount,
           measurements,
         )
 
@@ -1374,6 +1407,38 @@ function paginateSections(sectionDescriptors, measurements) {
           if (nextHeight > availableHeight) {
             break
           }
+        }
+
+        if (detailCount < minimumDetailCount) {
+          detailCount = Math.min(
+            minimumDetailCount,
+            item.details.length - detailStart,
+          )
+          fragmentHeight = getTimelineFragmentHeight(
+            item,
+            detailStart,
+            detailCount,
+            measurements,
+          )
+        }
+
+        while (
+          detailCount > 0 &&
+          isStandaloneTimelineLabel(item.details[detailStart + detailCount - 1]) &&
+          detailStart + detailCount < item.details.length
+        ) {
+          detailCount -= 1
+          fragmentHeight = getTimelineFragmentHeight(
+            item,
+            detailStart,
+            detailCount,
+            measurements,
+          )
+        }
+
+        if (detailCount === 0) {
+          moveToNextPage()
+          continue
         }
 
         const fragmentDetails = item.details.slice(
@@ -1418,14 +1483,8 @@ function paginateSections(sectionDescriptors, measurements) {
           return
         }
 
-        pushSectionToPages(pages, chunk)
-        currentPage.remainingHeight -= chunkHeight
+        commitChunk()
         startNewPage()
-        chunk = {
-          ...section,
-          items: [],
-        }
-        chunkHeight = sectionOverhead
         currentPage = pages[pages.length - 1]
       }
 
@@ -2927,13 +2986,18 @@ function ResumePreview({ resume, skills }) {
       firstPageContentHeight,
       nextPageContentHeight: availableHeight,
       sections: {},
+      sectionParts: {},
       items: {},
       itemParts: {},
     }
 
     contentArea.querySelectorAll('[data-section-key]').forEach((section) => {
-      measurements.sections[section.dataset.sectionKey] =
-        getOuterHeight(section)
+      const sectionKey = section.dataset.sectionKey
+      const sectionTitle = section.querySelector('[data-section-title]')
+      measurements.sections[sectionKey] = getOuterHeight(section)
+      measurements.sectionParts[sectionKey] = {
+        title: getOuterHeight(sectionTitle),
+      }
     })
     contentArea.querySelectorAll('[data-item-key]').forEach((item) => {
       const itemKey = item.dataset.itemKey
@@ -3096,6 +3160,7 @@ function SectionStack({ sections }) {
       key={section.key}
       title={section.title}
       sectionKey={section.key}
+      isContinuation={section.isContinuation}
     >
       <SectionContent section={section} />
     </PreviewSection>
@@ -3124,6 +3189,7 @@ function SectionContent({ section }) {
       meta={item.meta}
       extra={item.extra}
       details={item.details}
+      isContinuation={item.isContinuation}
     />
   ))
 }
@@ -3201,30 +3267,48 @@ function SidebarBlock({ title, children }) {
   )
 }
 
-function PreviewSection({ title, children, sectionKey }) {
+function PreviewSection({ title, children, sectionKey, isContinuation = false }) {
   return (
-    <section className="resume-section" data-section-key={sectionKey}>
-      <h3>{title}</h3>
+    <section
+      className={
+        isContinuation ? 'resume-section continuation' : 'resume-section'
+      }
+      data-section-key={sectionKey}
+    >
+      {isContinuation ? null : <h3 data-section-title>{title}</h3>}
       <div>{children}</div>
     </section>
   )
 }
 
-function TimelineItem({ itemKey, title, subtitle, meta, extra, details }) {
+function TimelineItem({
+  itemKey,
+  title,
+  subtitle,
+  meta,
+  extra,
+  details,
+  isContinuation = false,
+}) {
   const heading = title || subtitle || '未填写'
 
   return (
-    <div className="timeline-item" data-item-key={itemKey}>
-      <div className="timeline-head" data-item-head>
-        <div>
-          <h4>{heading}</h4>
-          {subtitle && title ? <p>{subtitle}</p> : null}
+    <div
+      className={isContinuation ? 'timeline-item continuation' : 'timeline-item'}
+      data-item-key={itemKey}
+    >
+      {!isContinuation ? (
+        <div className="timeline-head" data-item-head>
+          <div>
+            <h4>{heading}</h4>
+            {subtitle && title ? <p>{subtitle}</p> : null}
+          </div>
+          <div className="timeline-meta">
+            {meta ? <span>{meta}</span> : null}
+            {extra ? <span>{extra}</span> : null}
+          </div>
         </div>
-        <div className="timeline-meta">
-          {meta ? <span>{meta}</span> : null}
-          {extra ? <span>{extra}</span> : null}
-        </div>
-      </div>
+      ) : null}
       {details.length > 0 ? (
         <ul data-detail-list>
           {details.map((detail, index) => (

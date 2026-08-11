@@ -927,6 +927,20 @@ button {
   font-weight: 900;
 }
 
+.resume-sheet .resume-section.continuation {
+  display: block;
+  grid-template-columns: 1fr;
+  padding-top: 0;
+}
+
+.resume-sheet .resume-section.continuation::before {
+  display: none;
+}
+
+.timeline-item.continuation ul {
+  margin-top: 0;
+}
+
 .template-sidebar {
   display: grid;
   grid-template-columns: 64mm minmax(0, 1fr);
