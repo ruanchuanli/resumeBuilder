@@ -1,0 +1,27 @@
+
+┌────────────────────────────────────────────────────────────┐
+│                  npm update check failed                   │
+│            Try running with sudo or get access             │
+│            to the local update config store via            │
+│ sudo chown -R $USER:$(id -gn $USER) C:\Users\27634\.config │
+└────────────────────────────────────────────────────────────┘
+Failed to resolve import "./App.jsx" from "src\main.jsx". Does the file exist?
+[2m14:09:32[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "./App.jsx" from "src\main.jsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mD:/mycode/resumeBuilder/src/main.jsx[39m:3:16
+[33m  1  |  import React from "react";
+  2  |  import ReactDOM from "react-dom/client";
+  3  |  import App from "./App.jsx";
+     |                   ^
+  4  |  import "./styles.css";
+  5  |  ReactDOM.createRoot(document.getElementById("root")).render([39m
+      at formatError (file:///D:/mycode/resumeBuilder/node_modules/vite/dist/node/chunks/dep-41cf5ffd.js:44062:46)
+      at TransformContext.error (file:///D:/mycode/resumeBuilder/node_modules/vite/dist/node/chunks/dep-41cf5ffd.js:44058:19)
+      at normalizeUrl (file:///D:/mycode/resumeBuilder/node_modules/vite/dist/node/chunks/dep-41cf5ffd.js:41844:33)
+      at runMicrotasks (<anonymous>)
+      at processTicksAndRejections (internal/process/task_queues.js:95:5)
+      at async file:///D:/mycode/resumeBuilder/node_modules/vite/dist/node/chunks/dep-41cf5ffd.js:41998:47
+      at async Promise.all (index 2)
+      at async TransformContext.transform (file:///D:/mycode/resumeBuilder/node_modules/vite/dist/node/chunks/dep-41cf5ffd.js:41914:13)
+      at async Object.transform (file:///D:/mycode/resumeBuilder/node_modules/vite/dist/node/chunks/dep-41cf5ffd.js:44352:30)
+      at async loadAndTransform (file:///D:/mycode/resumeBuilder/node_modules/vite/dist/node/chunks/dep-41cf5ffd.js:55026:29)
