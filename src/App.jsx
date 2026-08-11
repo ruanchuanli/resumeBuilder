@@ -219,6 +219,8 @@ const defaultResume = {
       role: '负责人',
       start: '2020.06',
       end: '2021.12',
+      overview:
+        '面向校园用户的移动端视觉改版项目，聚焦界面一致性和年轻化体验。',
       description:
         '主导用户界面 UI 视觉设计。\n强化 APP 视觉形象，符合大学生审美。\n负责视觉迭代及优化。',
     },
@@ -228,6 +230,8 @@ const defaultResume = {
       role: '核心成员',
       start: '2024.05',
       end: '2024.09',
+      overview:
+        '用于结构化编辑和多模板预览的在线简历制作工具，支持本地保存和 PDF 导出。',
       description:
         '设计结构化简历数据模型，支持多模板预览、字段实时编辑和 PDF 导出。\n使用 React 状态分层和本地缓存机制，保证复杂表单编辑时的响应速度。',
     },
@@ -291,6 +295,7 @@ function createEmptyEntry(section) {
       role: '',
       start: '',
       end: '',
+      overview: '',
       description: '',
     }
   }
@@ -815,7 +820,16 @@ function parseProjectChunk(lines) {
       .replace(/^(角色|职责|担任|负责)[:：\s]*/, '')
       .replace(name, ''),
   )
-  const descriptionLines = getDescriptionLines(lines, [lines[0], roleLine])
+  const overviewLine =
+    lines.find((line) => /^(项目描述|项目背景|项目简介)[:：]/.test(line)) || ''
+  const overview = cleanImportedLine(
+    overviewLine.replace(/^(项目描述|项目背景|项目简介)[:：\s]*/, ''),
+  )
+  const descriptionLines = getDescriptionLines(lines, [
+    lines[0],
+    roleLine,
+    overviewLine,
+  ])
 
   return {
     id: createId('project'),
@@ -823,6 +837,7 @@ function parseProjectChunk(lines) {
     role,
     start: dates.start,
     end: dates.end,
+    overview,
     description: descriptionLines.join('\n'),
   }
 }
@@ -1136,6 +1151,18 @@ function splitSkills(value = '') {
     .split(/[,，\n]/)
     .map((skill) => skill.trim())
     .filter(Boolean)
+}
+
+function getProjectDetails(entry) {
+  const overviewLines = splitLines(entry.overview || '')
+  const resultLines = splitLines(entry.description || '')
+
+  return [
+    ...overviewLines.map((line, index) =>
+      index === 0 ? `项目描述：${line}` : line,
+    ),
+    ...(resultLines.length ? ['项目职责：', ...resultLines] : []),
+  ]
 }
 
 function getSkillLevel(index) {
@@ -2228,7 +2255,15 @@ function Editor({
               />
             </div>
             <TextArea
-              label="成果"
+              label="项目描述"
+              value={entry.overview || ''}
+              rows={4}
+              onChange={(value) =>
+                updateEntry('projects', entry.id, 'overview', value)
+              }
+            />
+            <TextArea
+              label="项目职责"
               value={entry.description}
               rows={5}
               onChange={(value) =>
@@ -2681,12 +2716,39 @@ function TextField({ label, value, onChange, type = 'text' }) {
 }
 
 function TextArea({ label, value, onChange, rows }) {
+  const textareaRef = useRef(null)
+  const [isFocused, setIsFocused] = useState(false)
+
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current
+
+    if (!textarea || !isFocused) {
+      return
+    }
+
+    textarea.style.height = 'auto'
+    textarea.style.height = `${textarea.scrollHeight + 2}px`
+  }, [isFocused, value])
+
+  const resetHeight = () => {
+    const textarea = textareaRef.current
+
+    if (textarea) {
+      textarea.style.height = ''
+    }
+
+    setIsFocused(false)
+  }
+
   return (
     <label className="field">
       <span>{label}</span>
       <textarea
+        ref={textareaRef}
         rows={rows}
         value={value}
+        onFocus={() => setIsFocused(true)}
+        onBlur={resetHeight}
         onChange={(event) => onChange(event.target.value)}
       />
     </label>
@@ -2781,7 +2843,7 @@ function buildSectionDescriptors(
         title: entry.name,
         subtitle: entry.role,
         meta: [entry.start, entry.end].filter(Boolean).join(' - '),
-        details: splitLines(entry.description),
+        details: getProjectDetails(entry),
       })),
     },
     education: {
@@ -3166,13 +3228,37 @@ function TimelineItem({ itemKey, title, subtitle, meta, extra, details }) {
       {details.length > 0 ? (
         <ul data-detail-list>
           {details.map((detail, index) => (
-            <li data-detail-line key={`${detail}-${index}`}>
-              {detail}
+            <li
+              className={isPlainTimelineDetail(detail) ? 'timeline-detail-plain' : ''}
+              data-detail-line
+              key={`${detail}-${index}`}
+            >
+              <TimelineDetailText text={detail} />
             </li>
           ))}
         </ul>
       ) : null}
     </div>
+  )
+}
+
+function isPlainTimelineDetail(text) {
+  return /^(项目描述|项目职责)：/.test(String(text || ''))
+}
+
+function TimelineDetailText({ text }) {
+  const value = String(text || '')
+  const match = value.match(/^(项目描述|项目职责)：(.*)$/)
+
+  if (!match) {
+    return value
+  }
+
+  return (
+    <>
+      <strong className="timeline-detail-label">{match[1]}：</strong>
+      {match[2]}
+    </>
   )
 }
 

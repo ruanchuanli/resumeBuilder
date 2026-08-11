@@ -442,6 +442,10 @@ button {
   box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.14);
 }
 
+.field textarea:focus {
+  overflow-y: hidden;
+}
+
 .resume-library .field + .field {
   margin-top: 12px;
 }
@@ -911,6 +915,16 @@ button {
 
 .timeline-item li + li {
   margin-top: 3px;
+}
+
+.timeline-detail-plain {
+  margin-left: -17px;
+  list-style: none;
+}
+
+.timeline-detail-label {
+  color: #111827;
+  font-weight: 900;
 }
 
 .template-sidebar {
