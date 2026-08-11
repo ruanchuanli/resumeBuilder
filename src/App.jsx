@@ -2141,6 +2141,112 @@ function Editor({
   )
 }
 
+function ImportResumePanel({ onImportText }) {
+  const inputId = useRef(createId('resume-import-input')).current
+  const [importText, setImportText] = useState('')
+  const [status, setStatus] = useState('')
+  const [statusType, setStatusType] = useState('idle')
+  const [isReading, setIsReading] = useState(false)
+
+  const handlePdfUpload = async (file) => {
+    if (!file) {
+      return
+    }
+
+    if (file.type !== 'application/pdf' && !file.name.endsWith('.pdf')) {
+      setStatus('请上传 PDF 文件。')
+      setStatusType('error')
+      return
+    }
+
+    if (file.size > MAX_IMPORT_PDF_SIZE) {
+      setStatus('PDF 请控制在 12MB 以内。')
+      setStatusType('error')
+      return
+    }
+
+    setIsReading(true)
+    setStatus('正在识别 PDF...')
+    setStatusType('idle')
+
+    try {
+      const result = await extractTextFromPdf(file)
+      const text = result.text.trim()
+      setImportText(text)
+
+      if (!text) {
+        setStatus('没有识别到文字，可粘贴简历文本后套用。')
+        setStatusType('error')
+        return
+      }
+
+      setStatus(`已识别 ${result.pageCount} 页。`)
+      setStatusType('success')
+    } catch (error) {
+      console.warn('Failed to import PDF', error)
+      setStatus('PDF 识别失败，可粘贴简历文本后套用。')
+      setStatusType('error')
+    } finally {
+      setIsReading(false)
+    }
+  }
+
+  const applyImportText = () => {
+    if (!importText.trim()) {
+      setStatus('请先上传 PDF 或粘贴简历文本。')
+      setStatusType('error')
+      return
+    }
+
+    const result = onImportText(importText)
+    setStatus(result.message)
+    setStatusType(result.ok ? 'success' : 'error')
+  }
+
+  return (
+    <section className="editor-section import-panel">
+      <div className="section-heading-row">
+        <SectionTitle icon={UploadCloud} title="PDF 导入" />
+        <span className={statusType === 'error' ? 'import-status error' : 'import-status'}>
+          {status}
+        </span>
+      </div>
+
+      <div className="import-actions">
+        <label className="ghost-button upload-button">
+          <UploadCloud size={16} aria-hidden="true" />
+          {isReading ? '识别中' : '上传 PDF'}
+          <input
+            id={inputId}
+            type="file"
+            accept="application/pdf,.pdf"
+            disabled={isReading}
+            onChange={(event) => {
+              handlePdfUpload(event.target.files?.[0])
+              event.target.value = ''
+            }}
+          />
+        </label>
+        <button
+          className="primary-button"
+          type="button"
+          disabled={isReading}
+          onClick={applyImportText}
+        >
+          套用到当前模板
+        </button>
+      </div>
+
+      <TextArea
+        label="识别文本 / 粘贴文本"
+        value={importText}
+        rows={6}
+        onChange={setImportText}
+      />
+    </section>
+  )
+}
+
 function ResumeLibraryManager({
   resumeLibrary,
   activeResumeItem,
