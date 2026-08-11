@@ -22,6 +22,7 @@ import React, {
   useRef,
   useState,
 } from 'react'
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.js?url'
 
 const STORAGE_KEY = 'react-resume-builder-data-v4'
 const LIBRARY_STORAGE_KEY = 'react-resume-builder-library-v1'
@@ -109,7 +110,7 @@ const templates = [
 
 const sectionLabelsByCategory = {
   developer: {
-    summary: '个人优势',
+    summary: '专业技能',
     skills: '技术栈',
     experiences: '工作经历',
     projects: '项目经验',
@@ -162,7 +163,7 @@ const builtInSectionIds = [
 ]
 
 const editorSectionLabels = {
-  summary: '个人优势',
+  summary: '专业技能',
   skills: '技能栈',
   experiences: '工作经历',
   projects: '项目经历',
@@ -1047,10 +1048,10 @@ function getImportedResumeStats(importedResume) {
 
 async function extractTextFromPdf(file) {
   const pdfjsLib = await import('pdfjs-dist/build/pdf')
+  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
   const arrayBuffer = await file.arrayBuffer()
   const loadingTask = pdfjsLib.getDocument({
     data: arrayBuffer,
-    disableWorker: true,
   })
   const pdf = await loadingTask.promise
   const pageCount = pdf.numPages
@@ -1117,6 +1118,19 @@ function splitLines(value = '') {
     .filter(Boolean)
 }
 
+function splitNumberedLines(value = '') {
+  return value
+    .replace(/\r\n/g, '\n')
+    .replace(
+      /(^|[^\d\n])(\d{1,2}[.、)）](?!\d)\s*)/g,
+      (match, prefix, marker, offset) =>
+        offset === 0 ? marker : `${prefix}\n${marker}`,
+    )
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+}
+
 function splitSkills(value = '') {
   return value
     .split(/[,，\n]/)
@@ -1154,7 +1168,10 @@ function cloneSectionDescriptor(section) {
   if (section.kind === 'timeline') {
     return {
       ...section,
-      items: [...section.items],
+      items: section.items.map((item) => ({
+        ...item,
+        details: [...item.details],
+      })),
     }
   }
 
@@ -1170,6 +1187,36 @@ function createPage(remainingHeight) {
   return {
     sections: [],
     remainingHeight,
+  }
+}
+
+function getTimelineItemParts(item, measurements) {
+  return measurements.itemParts?.[item.key] || null
+}
+
+function getTimelineFragmentHeight(item, detailStart, detailCount, measurements) {
+  const parts = getTimelineItemParts(item, measurements)
+
+  if (!parts) {
+    return measurements.items[item.key] || 0
+  }
+
+  const detailHeight = parts.details
+    .slice(detailStart, detailStart + detailCount)
+    .reduce((sum, height) => sum + height, 0)
+  const listHeight = detailCount > 0 ? parts.listOverhead + detailHeight : 0
+
+  return parts.chrome + parts.head + listHeight
+}
+
+function createTimelineFragment(item, detailStart, details, partIndex) {
+  return {
+    ...item,
+    key:
+      partIndex === 0 && details.length === item.details.length
+        ? item.key
+        : `${item.key}:part-${partIndex}-${detailStart}`,
+    details,
   }
 }
 
@@ -1218,6 +1265,111 @@ function paginateSections(sectionDescriptors, measurements) {
       items: [],
     }
     let chunkHeight = sectionOverhead
+    let splitPartIndex = 0
+
+    const resetChunk = () => {
+      chunk = {
+        ...section,
+        items: [],
+      }
+      chunkHeight = sectionOverhead
+    }
+
+    const commitChunk = () => {
+      if (!chunk.items.length) {
+        return
+      }
+
+      currentPage = pages[pages.length - 1]
+      pushSectionToPages(pages, chunk)
+      currentPage.remainingHeight -= chunkHeight
+      resetChunk()
+    }
+
+    const moveToNextPage = () => {
+      commitChunk()
+      startNewPage()
+      currentPage = pages[pages.length - 1]
+    }
+
+    const addSplitItem = (item) => {
+      const parts = getTimelineItemParts(item, measurements)
+
+      if (!parts || item.details.length <= 1) {
+        chunk.items.push(item)
+        chunkHeight += measurements.items[item.key] || sectionHeight
+        return
+      }
+
+      let detailStart = 0
+
+      while (detailStart < item.details.length) {
+        currentPage = pages[pages.length - 1]
+        let availableHeight = currentPage.remainingHeight - chunkHeight
+        const minimumHeight = getTimelineFragmentHeight(
+          item,
+          detailStart,
+          1,
+          measurements,
+        )
+
+        if (
+          availableHeight < minimumHeight &&
+          (chunk.items.length > 0 || currentPage.sections.length > 0)
+        ) {
+          moveToNextPage()
+          availableHeight = pages[pages.length - 1].remainingHeight - chunkHeight
+        }
+
+        let detailCount = 0
+        let fragmentHeight = getTimelineFragmentHeight(
+          item,
+          detailStart,
+          detailCount,
+          measurements,
+        )
+
+        while (detailStart + detailCount < item.details.length) {
+          const nextHeight = getTimelineFragmentHeight(
+            item,
+            detailStart,
+            detailCount + 1,
+            measurements,
+          )
+
+          if (detailCount > 0 && nextHeight > availableHeight) {
+            break
+          }
+
+          detailCount += 1
+          fragmentHeight = nextHeight
+
+          if (nextHeight > availableHeight) {
+            break
+          }
+        }
+
+        const fragmentDetails = item.details.slice(
+          detailStart,
+          detailStart + detailCount,
+        )
+        chunk.items.push(
+          createTimelineFragment(
+            item,
+            detailStart,
+            fragmentDetails,
+            splitPartIndex,
+          ),
+        )
+        chunkHeight += fragmentHeight
+        detailStart += detailCount
+        splitPartIndex += 1
+
+        if (detailStart < item.details.length) {
+          moveToNextPage()
+        }
+      }
+    }
 
     section.items.forEach((item, index) => {
       const itemHeight = itemHeights[index] || sectionHeight
@@ -1227,6 +1379,18 @@ function paginateSections(sectionDescriptors, measurements) {
         chunk.items.length > 0 &&
         chunkHeight + itemHeight > currentPage.remainingHeight
       ) {
+        const parts = getTimelineItemParts(item, measurements)
+        const minimumSplitHeight =
+          parts && item.details.length > 1
+            ? getTimelineFragmentHeight(item, 0, 1, measurements)
+            : Number.POSITIVE_INFINITY
+        const availableHeight = currentPage.remainingHeight - chunkHeight
+
+        if (availableHeight >= minimumSplitHeight) {
+          addSplitItem(item)
+          return
+        }
+
         pushSectionToPages(pages, chunk)
         currentPage.remainingHeight -= chunkHeight
         startNewPage()
@@ -1247,24 +1411,16 @@ function paginateSections(sectionDescriptors, measurements) {
         currentPage = pages[pages.length - 1]
       }
 
-      chunk.items.push(item)
-      chunkHeight += itemHeight
-    })
-
-    if (chunk.items.length) {
-      currentPage = pages[pages.length - 1]
-
-      if (
-        chunkHeight > currentPage.remainingHeight &&
-        currentPage.sections.length > 0
-      ) {
-        startNewPage()
-        currentPage = pages[pages.length - 1]
+      if (chunkHeight + itemHeight <= currentPage.remainingHeight) {
+        chunk.items.push(item)
+        chunkHeight += itemHeight
+        return
       }
 
-      pushSectionToPages(pages, chunk)
-      currentPage.remainingHeight -= chunkHeight
-    }
+      addSplitItem(item)
+    })
+
+    commitChunk()
   })
 
   return pages
@@ -1759,14 +1915,6 @@ function App() {
               <span>PDF 预览</span>
               <strong>A4</strong>
             </div>
-            <button
-              className="primary-button compact"
-              type="button"
-              onClick={printPdf}
-            >
-              <Download size={16} aria-hidden="true" />
-              导出 PDF
-            </button>
           </div>
           <ResumePreview resume={resume} skills={skillList} />
         </main>
@@ -1961,9 +2109,9 @@ function Editor({
       </section>
 
       <section className="editor-section">
-        <SectionTitle title="个人优势" />
+        <SectionTitle title="专业技能" />
         <TextArea
-          label="简介"
+          label="技能描述"
           value={resume.summary}
           rows={5}
           onChange={(value) => updateField('summary', value)}
@@ -2718,6 +2866,7 @@ function ResumePreview({ resume, skills }) {
       nextPageContentHeight: availableHeight,
       sections: {},
       items: {},
+      itemParts: {},
     }
 
     contentArea.querySelectorAll('[data-section-key]').forEach((section) => {
@@ -2725,7 +2874,25 @@ function ResumePreview({ resume, skills }) {
         getOuterHeight(section)
     })
     contentArea.querySelectorAll('[data-item-key]').forEach((item) => {
-      measurements.items[item.dataset.itemKey] = getOuterHeight(item)
+      const itemKey = item.dataset.itemKey
+      const head = item.querySelector('[data-item-head]')
+      const detailList = item.querySelector('[data-detail-list]')
+      const detailNodes = Array.from(
+        item.querySelectorAll('[data-detail-line]'),
+      )
+      const detailHeights = detailNodes.map(getOuterHeight)
+      const headHeight = getOuterHeight(head)
+      const detailListHeight = detailList ? getOuterHeight(detailList) : 0
+      const detailHeight = detailHeights.reduce((sum, height) => sum + height, 0)
+      const itemHeight = getOuterHeight(item)
+
+      measurements.items[itemKey] = itemHeight
+      measurements.itemParts[itemKey] = {
+        head: headHeight,
+        listOverhead: Math.max(0, detailListHeight - detailHeight),
+        chrome: Math.max(0, itemHeight - headHeight - detailListHeight),
+        details: detailHeights,
+      }
     })
 
     setPages(paginateSections(sectionDescriptors, measurements))
@@ -2875,7 +3042,7 @@ function SectionStack({ sections }) {
 
 function SectionContent({ section }) {
   if (section.kind === 'summary') {
-    return <p className="summary-text">{section.content}</p>
+    return <SummaryContent content={section.content} />
   }
 
   if (section.kind === 'skills') {
@@ -2897,6 +3064,22 @@ function SectionContent({ section }) {
       details={item.details}
     />
   ))
+}
+
+function SummaryContent({ content }) {
+  const lines = splitNumberedLines(content)
+
+  if (!lines.length) {
+    return <p className="summary-text" />
+  }
+
+  return (
+    <div className="summary-text">
+      {lines.map((line, index) => (
+        <p key={`${line}-${index}`}>{line}</p>
+      ))}
+    </div>
+  )
 }
 
 function CustomSectionContent({ content }) {
@@ -2970,7 +3153,7 @@ function TimelineItem({ itemKey, title, subtitle, meta, extra, details }) {
 
   return (
     <div className="timeline-item" data-item-key={itemKey}>
-      <div className="timeline-head">
+      <div className="timeline-head" data-item-head>
         <div>
           <h4>{heading}</h4>
           {subtitle && title ? <p>{subtitle}</p> : null}
@@ -2981,9 +3164,11 @@ function TimelineItem({ itemKey, title, subtitle, meta, extra, details }) {
         </div>
       </div>
       {details.length > 0 ? (
-        <ul>
+        <ul data-detail-list>
           {details.map((detail, index) => (
-            <li key={`${detail}-${index}`}>{detail}</li>
+            <li data-detail-line key={`${detail}-${index}`}>
+              {detail}
+            </li>
           ))}
         </ul>
       ) : null}

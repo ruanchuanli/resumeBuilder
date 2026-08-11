@@ -39,7 +39,7 @@ button {
 
 @media screen {
   .app-shell {
-    width: 125%;
+    width: 100%;
     min-height: 125vh;
     zoom: 0.8;
   }
@@ -124,6 +124,7 @@ button {
 .header-actions {
   display: flex;
   align-items: center;
+  margin-left: auto;
   gap: 10px;
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -198,11 +199,13 @@ button {
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(850px, 720px) minmax(0, 1fr);
+  grid-template-columns: minmax(700px, 800px) minmax(0, 1fr);
   min-height: calc(100vh - 67px);
+  width: 100%;
 }
 
 .editor-pane {
+  min-width: 0;
   border-right: 1px solid var(--line);
   background: #ffffff;
   overflow-y: auto;
@@ -807,6 +810,14 @@ button {
   color: #344054;
   font-size: 13px;
   line-height: 1.75;
+}
+
+.summary-text p {
+  margin: 0;
+}
+
+.summary-text p + p {
+  margin-top: 3px;
 }
 
 .custom-section-text {
