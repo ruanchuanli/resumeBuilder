@@ -1165,6 +1165,177 @@ function getProjectDetails(entry) {
   ]
 }
 
+function formatTextBlock(title, content) {
+  const lines = splitNumberedLines(content)
+
+  if (!lines.length) {
+    return []
+  }
+
+  return ['', title, ...lines]
+}
+
+function formatResumeEntry(entry, index, fields = []) {
+  const lines = [`${index + 1}. ${entry.title || '未命名'}`]
+
+  fields.forEach(({ label, value, multiline }) => {
+    const content = typeof value === 'string' ? value.trim() : ''
+
+    if (!content) {
+      return
+    }
+
+    if (multiline) {
+      lines.push(`${label}：`)
+      splitLines(content).forEach((line) => lines.push(`- ${line}`))
+      return
+    }
+
+    lines.push(`${label}：${content}`)
+  })
+
+  return lines
+}
+
+function formatCurrentResumeForCopy(resume) {
+  const normalizedResume = normalizeResume(resume)
+  const { profile } = normalizedResume
+  const lines = []
+
+  lines.push(profile.name || '未填写姓名')
+
+  if (profile.title) {
+    lines.push(profile.title)
+  }
+
+  const contacts = (profile.contacts || []).filter(
+    (contact) => contact.label || contact.value,
+  )
+
+  if (contacts.length) {
+    lines.push('', '基本信息')
+    contacts.forEach((contact) => {
+      const label = contact.label || '信息'
+      lines.push(`${label}：${contact.value || ''}`)
+    })
+  }
+
+  lines.push(...formatTextBlock('专业技能', normalizedResume.summary))
+  lines.push(...formatTextBlock('技能栈', normalizedResume.skills))
+
+  if (normalizedResume.experiences.length) {
+    lines.push('', '工作经历')
+    normalizedResume.experiences.forEach((entry, index) => {
+      if (index > 0) {
+        lines.push('')
+      }
+
+      lines.push(
+        ...formatResumeEntry(
+          {
+            ...entry,
+            title: entry.company,
+          },
+          index,
+          [
+            { label: '岗位', value: entry.role },
+            {
+              label: '时间',
+              value: [entry.start, entry.end].filter(Boolean).join(' - '),
+            },
+            { label: '地点', value: entry.location },
+            { label: '工作内容', value: entry.description, multiline: true },
+          ],
+        ),
+      )
+    })
+  }
+
+  if (normalizedResume.projects.length) {
+    lines.push('', '项目经历')
+    normalizedResume.projects.forEach((entry, index) => {
+      if (index > 0) {
+        lines.push('')
+      }
+
+      lines.push(
+        ...formatResumeEntry(
+          {
+            ...entry,
+            title: entry.name,
+          },
+          index,
+          [
+            { label: '角色', value: entry.role },
+            {
+              label: '时间',
+              value: [entry.start, entry.end].filter(Boolean).join(' - '),
+            },
+            { label: '项目描述', value: entry.overview },
+            { label: '项目职责', value: entry.description, multiline: true },
+          ],
+        ),
+      )
+    })
+  }
+
+  if (normalizedResume.education.length) {
+    lines.push('', '教育背景')
+    normalizedResume.education.forEach((entry, index) => {
+      if (index > 0) {
+        lines.push('')
+      }
+
+      lines.push(
+        ...formatResumeEntry(
+          {
+            ...entry,
+            title: entry.school,
+          },
+          index,
+          [
+            { label: '学历专业', value: entry.degree },
+            {
+              label: '时间',
+              value: [entry.start, entry.end].filter(Boolean).join(' - '),
+            },
+            { label: '补充', value: entry.details, multiline: true },
+          ],
+        ),
+      )
+    })
+  }
+
+  const customSections = normalizeLayout(normalizedResume.layout).customSections
+
+  customSections.forEach((section) => {
+    lines.push(...formatTextBlock(section.title || '自定义模块', section.content))
+  })
+
+  return `${lines.join('\n').replace(/\n{3,}/g, '\n\n')}\n`
+}
+
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text)
+    return
+  }
+
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.left = '-9999px'
+  document.body.appendChild(textarea)
+  textarea.select()
+
+  try {
+    document.execCommand('copy')
+  } finally {
+    document.body.removeChild(textarea)
+  }
+}
+
 function getSkillLevel(index) {
   const levels = [94, 88, 82, 76, 90, 72, 84, 68, 78, 86]
   return `${levels[index % levels.length]}%`
@@ -1516,6 +1687,7 @@ function paginateSections(sectionDescriptors, measurements) {
 
 function App() {
   const [resumeLibrary, setResumeLibrary] = useState(loadResumeLibrary)
+  const [hasCopiedResume, setHasCopiedResume] = useState(false)
   const activeResumeItem = useMemo(() => {
     return (
       resumeLibrary.items.find((item) => item.id === resumeLibrary.activeId) ||
@@ -1940,6 +2112,17 @@ function App() {
     }, 50)
   }
 
+  const copyResume = async () => {
+    try {
+      await copyTextToClipboard(formatCurrentResumeForCopy(resume))
+      setHasCopiedResume(true)
+      window.setTimeout(() => setHasCopiedResume(false), 1600)
+    } catch (error) {
+      console.warn('Failed to copy resume', error)
+      window.alert('复制失败，请检查浏览器剪贴板权限。')
+    }
+  }
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -1954,6 +2137,10 @@ function App() {
           <button className="ghost-button" type="button" onClick={resetSample}>
             <RotateCcw size={16} aria-hidden="true" />
             重置样例
+          </button>
+          <button className="ghost-button" type="button" onClick={copyResume}>
+            <Copy size={16} aria-hidden="true" />
+            {hasCopiedResume ? '已复制' : '复制简历'}
           </button>
           <button className="primary-button" type="button" onClick={printPdf}>
             <Download size={16} aria-hidden="true" />

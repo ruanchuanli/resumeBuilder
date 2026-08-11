@@ -1,6 +1,13 @@
 :root {
   color: #1f2933;
-  font-family: Inter, 'Segoe UI', 'Microsoft YaHei', Arial, sans-serif;
+  font-family:
+    'Microsoft YaHei',
+    'PingFang SC',
+    'Noto Sans CJK SC',
+    'Source Han Sans SC',
+    'SimSun',
+    Arial,
+    sans-serif;
   line-height: 1.5;
   background: #f3f5f7;
   text-rendering: optimizeLegibility;
@@ -2193,6 +2200,20 @@ button {
     overflow: visible;
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
+  }
+
+  .resume-sheet,
+  .resume-sheet * {
+    font-family:
+      'Microsoft YaHei',
+      'PingFang SC',
+      'Noto Sans CJK SC',
+      'Source Han Sans SC',
+      'SimSun',
+      Arial,
+      sans-serif !important;
+    font-variant-ligatures: none;
+    text-rendering: geometricPrecision;
   }
 
   .resume-section,
