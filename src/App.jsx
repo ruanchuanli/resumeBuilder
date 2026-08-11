@@ -571,6 +571,540 @@ function loadResumeLibrary() {
   }
 }
 
+function cleanImportedLine(line = '') {
+  return line
+    .replace(/[｜|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function cleanBulletLine(line = '') {
+  return cleanImportedLine(line).replace(/^[•·●○◆◇▪▫*+\-\u2022\s]+/, '')
+}
+
+function uniqueByValue(items) {
+  const seen = new Set()
+
+  return items.filter((item) => {
+    const key =
+      typeof item === 'string'
+        ? item.trim()
+        : `${item.label || ''}:${item.value || ''}`.trim()
+
+    if (!key || seen.has(key)) {
+      return false
+    }
+
+    seen.add(key)
+    return true
+  })
+}
+
+function getLabelValue(lines, labels) {
+  for (const line of lines) {
+    for (const label of labels) {
+      const index = line.toLowerCase().indexOf(label.toLowerCase())
+
+      if (index >= 0) {
+        const value = cleanImportedLine(line.slice(index + label.length))
+          .replace(/^[：:\-\s]+/, '')
+          .split(/\s{2,}|[,，;；]/)[0]
+          .trim()
+
+        if (value) {
+          return value
+        }
+      }
+    }
+  }
+
+  return ''
+}
+
+function getImportedSectionKey(line) {
+  const header = cleanImportedLine(line)
+    .replace(/[：:]/g, '')
+    .replace(/^[#\-\s]+/, '')
+    .trim()
+
+  if (!header || header.length > 36) {
+    return ''
+  }
+
+  const rules = [
+    {
+      key: 'summary',
+      pattern:
+        /^(个人优势|个人简介|个人陈述|自我评价|职业概述|求职目标|summary|profile|objective)$/i,
+    },
+    {
+      key: 'skills',
+      pattern:
+        /^(专业技能|技能栈|技术栈|技能证书|能力标签|核心能力|技能|skills)$/i,
+    },
+    {
+      key: 'experiences',
+      pattern:
+        /^(工作经历|工作经验|实习经历|实践经历|教学经历|任职经历|experience|work experience)$/i,
+    },
+    {
+      key: 'projects',
+      pattern:
+        /^(项目经历|项目经验|项目实践|代表项目|校园项目|作品项目|教研成果|projects|project experience)$/i,
+    },
+    {
+      key: 'education',
+      pattern:
+        /^(教育背景|教育经历|学历背景|教育经验|教育|education)$/i,
+    },
+  ]
+
+  const matchedRule = rules.find((rule) => rule.pattern.test(header))
+  return matchedRule?.key || ''
+}
+
+function groupLinesBySection(lines) {
+  const buckets = {
+    top: [],
+    summary: [],
+    skills: [],
+    experiences: [],
+    projects: [],
+    education: [],
+  }
+  let currentKey = 'top'
+
+  lines.forEach((line) => {
+    const sectionKey = getImportedSectionKey(line)
+
+    if (sectionKey) {
+      currentKey = sectionKey
+      return
+    }
+
+    buckets[currentKey].push(line)
+  })
+
+  return buckets
+}
+
+function extractDateRange(text = '') {
+  const match = text.match(
+    /((?:19|20)\d{2}(?:[./-]\d{1,2}|年\d{1,2}月?)?)\s*(?:-|—|–|~|至|到)\s*((?:19|20)\d{2}(?:[./-]\d{1,2}|年\d{1,2}月?)?|至今|现在|目前|Present)/i,
+  )
+
+  if (!match) {
+    return { start: '', end: '' }
+  }
+
+  return {
+    start: normalizeImportedDate(match[1]),
+    end: normalizeImportedDate(match[2]),
+  }
+}
+
+function normalizeImportedDate(value = '') {
+  return cleanImportedLine(value)
+    .replace(/年/g, '.')
+    .replace(/月/g, '')
+    .replace(/至今|现在|目前/gi, '至今')
+}
+
+function removeDateRange(text = '') {
+  return cleanImportedLine(text).replace(
+    /((?:19|20)\d{2}(?:[./-]\d{1,2}|年\d{1,2}月?)?)\s*(?:-|—|–|~|至|到)\s*((?:19|20)\d{2}(?:[./-]\d{1,2}|年\d{1,2}月?)?|至今|现在|目前|Present)/gi,
+    '',
+  )
+}
+
+function hasDateRange(text = '') {
+  return Boolean(extractDateRange(text).start)
+}
+
+function getLocationFromText(text = '') {
+  const match = text.match(
+    /(北京|上海|广州|深圳|杭州|成都|南京|武汉|西安|苏州|重庆|天津|厦门|长沙|郑州|青岛|远程|Remote)/i,
+  )
+  return match?.[0] || ''
+}
+
+function getDescriptionLines(lines, skippedLines = []) {
+  const skippedSet = new Set(skippedLines.filter(Boolean))
+
+  return lines
+    .filter((line) => !skippedSet.has(line))
+    .map((line) => cleanBulletLine(removeDateRange(line)))
+    .filter((line) => line && line.length > 1)
+}
+
+function splitEntryChunks(lines) {
+  const chunks = []
+  let currentChunk = []
+  const usefulLines = lines.map(cleanBulletLine).filter(Boolean)
+
+  usefulLines.forEach((line, index) => {
+    const isNewEntry =
+      index > 0 &&
+      !/^[•·●○◆◇▪▫*+\-]/.test(line) &&
+      (hasDateRange(line) ||
+        /(公司|科技|集团|大学|学院|学校|中学|教育|中心|工作室|实验室|有限公司|University|College|School)/i.test(
+          line,
+        ))
+
+    if (isNewEntry && currentChunk.length) {
+      chunks.push(currentChunk)
+      currentChunk = [line]
+      return
+    }
+
+    currentChunk.push(line)
+  })
+
+  if (currentChunk.length) {
+    chunks.push(currentChunk)
+  }
+
+  return chunks.slice(0, 10)
+}
+
+function parseExperienceChunk(lines) {
+  const text = lines.join(' ')
+  const dates = extractDateRange(text)
+  const firstLine = removeDateRange(lines[0] || '')
+  const companyMatch = text.match(
+    /([\u4e00-\u9fa5A-Za-z0-9（）()&·.\-\s]{2,34}(?:有限公司|公司|科技|集团|教育|中心|工作室|实验室|University|College|School))/i,
+  )
+  const company = cleanImportedLine(companyMatch?.[1] || firstLine)
+  const roleLine =
+    lines.find((line) =>
+      /(前端|后端|全栈|开发|算法|测试|运维|数据|产品|项目|运营|设计|教师|老师|讲师|实习|工程师|经理|负责人|主管|专员|助理|顾问|架构师)/i.test(
+        line,
+      ),
+    ) || ''
+  const role = cleanImportedLine(
+    removeDateRange(roleLine).replace(company, '').replace(/[，,;；]/g, ' '),
+  )
+  const skipped = [lines[0], roleLine]
+  const descriptionLines = getDescriptionLines(lines, skipped)
+
+  return {
+    id: createId('exp'),
+    company: company || '工作经历',
+    role: role || '',
+    start: dates.start,
+    end: dates.end,
+    location: getLocationFromText(text),
+    description: descriptionLines.join('\n'),
+  }
+}
+
+function parseProjectChunk(lines) {
+  const text = lines.join(' ')
+  const dates = extractDateRange(text)
+  const firstLine = removeDateRange(lines[0] || '')
+  const roleLine =
+    lines.find((line) => /(角色|负责|负责人|核心成员|主导|参与)/.test(line)) || ''
+  const name = cleanImportedLine(
+    firstLine
+      .replace(/^(项目名称|项目|作品)[:：\s]*/, '')
+      .replace(/[，,;；].*$/, ''),
+  )
+  const role = cleanImportedLine(
+    roleLine
+      .replace(/^(角色|职责|担任|负责)[:：\s]*/, '')
+      .replace(name, ''),
+  )
+  const descriptionLines = getDescriptionLines(lines, [lines[0], roleLine])
+
+  return {
+    id: createId('project'),
+    name: name || '项目经历',
+    role,
+    start: dates.start,
+    end: dates.end,
+    description: descriptionLines.join('\n'),
+  }
+}
+
+function parseEducationChunk(lines) {
+  const text = lines.join(' ')
+  const dates = extractDateRange(text)
+  const schoolMatch = text.match(
+    /([\u4e00-\u9fa5A-Za-z0-9（）()&·.\-\s]{2,34}(?:大学|学院|学校|中学|院校|University|College|School))/i,
+  )
+  const degreeMatch = text.match(
+    /(博士|硕士研究生|硕士|研究生|本科|学士|大专|专科|高中|MBA|Ph\.?D|Master|Bachelor)[^，,;；\n]*/i,
+  )
+  const school = cleanImportedLine(schoolMatch?.[1] || removeDateRange(lines[0]))
+  const degree = cleanImportedLine(degreeMatch?.[0] || '')
+  const details = getDescriptionLines(lines, [lines[0]]).join('\n')
+
+  return {
+    id: createId('edu'),
+    school: school || '教育经历',
+    degree,
+    start: dates.start,
+    end: dates.end,
+    details,
+  }
+}
+
+function parseEntrySection(lines, parser) {
+  return splitEntryChunks(lines)
+    .map(parser)
+    .filter((entry) => Object.values(entry).some((value) => value))
+}
+
+function getImportedContacts(text, lines) {
+  const contacts = []
+  const phone = text.match(/(?:\+?86[-\s]?)?1[3-9]\d[-\s]?\d{4}[-\s]?\d{4}/)
+  const email = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)
+  const website = text.match(
+    /(https?:\/\/[^\s]+|(?:github|gitee|linkedin)\.com\/[^\s]+|[A-Za-z0-9._%+-]+\.github\.io[^\s]*)/i,
+  )
+  const city = getLabelValue(lines, ['现居', '所在地', '城市', '地点'])
+  const degree = text.match(/博士|硕士研究生|硕士|研究生|本科|学士|大专|专科/)
+  const birthday =
+    getLabelValue(lines, ['出生年月', '生日', '出生']) ||
+    text.match(/\d{4}年\d{1,2}月\d{0,2}日?/)?.[0]
+
+  if (phone) {
+    contacts.push({ label: '电话', value: phone[0].replace(/\s+/g, '') })
+  }
+
+  if (email) {
+    contacts.push({ label: '邮箱', value: email[0] })
+  }
+
+  if (city) {
+    contacts.push({ label: '城市', value: city })
+  }
+
+  if (website) {
+    contacts.push({ label: '作品', value: website[0] })
+  }
+
+  if (degree) {
+    contacts.push({ label: '学历', value: degree[0] })
+  }
+
+  if (birthday) {
+    contacts.push({ label: '出生年月', value: birthday })
+  }
+
+  return uniqueByValue(contacts).map((contact) => ({
+    id: createId('contact'),
+    ...contact,
+  }))
+}
+
+function getImportedName(lines) {
+  const explicitName = getLabelValue(lines.slice(0, 12), ['姓名', 'Name'])
+
+  if (explicitName && explicitName.length <= 12) {
+    return explicitName
+  }
+
+  const candidate = lines
+    .slice(0, 10)
+    .map((line) => line.replace(/[：:]/g, '').trim())
+    .find((line) => {
+      if (/电话|邮箱|求职|应聘|岗位|简历|resume/i.test(line)) {
+        return false
+      }
+
+      return /^[\u4e00-\u9fa5]{2,5}$/.test(line) || /^[A-Z][a-z]+(?:\s[A-Z][a-z]+){1,2}$/.test(line)
+    })
+
+  return candidate || ''
+}
+
+function getImportedTitle(lines, name) {
+  const titleFromLabel = getLabelValue(lines.slice(0, 18), [
+    '求职意向',
+    '应聘岗位',
+    '目标岗位',
+    '求职岗位',
+    '职位',
+    '岗位',
+  ])
+
+  if (titleFromLabel) {
+    return titleFromLabel
+  }
+
+  return (
+    lines
+      .slice(0, 14)
+      .map((line) => cleanImportedLine(line).replace(name, '').trim())
+      .find((line) => {
+        return (
+          line.length <= 36 &&
+          /(前端|后端|全栈|Java|Python|算法|测试|运维|数据|产品|项目|运营|设计|教师|老师|讲师|实习|工程师|经理|负责人|开发|UI|UX)/i.test(
+            line,
+          )
+        )
+      }) || ''
+  )
+}
+
+function getImportedSummary(buckets, lines, name, title) {
+  const summaryLines = buckets.summary.length
+    ? buckets.summary
+    : lines
+        .slice(0, 16)
+        .filter((line) => line !== name && line !== title)
+        .filter((line) => !/电话|邮箱|出生|现居|所在地|求职|应聘|岗位/i.test(line))
+        .filter((line) => line.length >= 12)
+
+  return summaryLines.map(cleanBulletLine).filter(Boolean).slice(0, 5).join('\n')
+}
+
+function getImportedSkills(buckets, lines) {
+  const skillLines = buckets.skills.length
+    ? buckets.skills
+    : lines.filter((line) =>
+        /(React|Vue|JavaScript|TypeScript|Java|Python|Node|SQL|Excel|Photoshop|Illustrator|沟通|管理|教学|课程|设计|数据|用户|调研|技能)/i.test(
+          line,
+        ),
+      )
+  const skills = uniqueByValue(
+    skillLines
+      .flatMap((line) => line.split(/[、,，;；/]/))
+      .map(cleanBulletLine)
+      .map((skill) => skill.replace(/^(技能|技术栈|专业技能)[:：\s]*/, ''))
+      .filter((skill) => skill && skill.length <= 30 && !hasDateRange(skill)),
+  )
+
+  return skills.length ? skills.join(', ') : skillLines.map(cleanBulletLine).join(', ')
+}
+
+function parseImportedResumeText(text) {
+  const lines = splitLines(text).map(cleanImportedLine).filter(Boolean)
+  const joinedText = lines.join(' ')
+  const buckets = groupLinesBySection(lines)
+  const name = getImportedName(lines)
+  const title = getImportedTitle(lines, name)
+
+  return {
+    profile: {
+      name,
+      title,
+      contacts: getImportedContacts(joinedText, lines),
+    },
+    summary: getImportedSummary(buckets, lines, name, title),
+    skills: getImportedSkills(buckets, lines),
+    experiences: parseEntrySection(buckets.experiences, parseExperienceChunk),
+    projects: parseEntrySection(buckets.projects, parseProjectChunk),
+    education: parseEntrySection(buckets.education, parseEducationChunk),
+  }
+}
+
+function mergeImportedResume(currentResume, importedResume) {
+  const current = normalizeResume(currentResume)
+
+  return normalizeResume({
+    ...current,
+    profile: {
+      ...current.profile,
+      name: importedResume.profile.name || current.profile.name,
+      title: importedResume.profile.title || current.profile.title,
+      contacts: importedResume.profile.contacts.length
+        ? importedResume.profile.contacts
+        : current.profile.contacts,
+    },
+    summary: importedResume.summary || current.summary,
+    skills: importedResume.skills || current.skills,
+    experiences: importedResume.experiences.length
+      ? importedResume.experiences
+      : current.experiences,
+    projects: importedResume.projects.length
+      ? importedResume.projects
+      : current.projects,
+    education: importedResume.education.length
+      ? importedResume.education
+      : current.education,
+    theme: current.theme,
+    layout: current.layout,
+  })
+}
+
+function getImportedResumeStats(importedResume) {
+  return [
+    importedResume.profile.name ? '姓名' : '',
+    importedResume.profile.contacts.length ? '联系方式' : '',
+    importedResume.summary ? '简介' : '',
+    importedResume.skills ? '技能' : '',
+    importedResume.experiences.length ? `${importedResume.experiences.length} 段经历` : '',
+    importedResume.projects.length ? `${importedResume.projects.length} 个项目` : '',
+    importedResume.education.length ? `${importedResume.education.length} 段教育` : '',
+  ].filter(Boolean)
+}
+
+async function extractTextFromPdf(file) {
+  const pdfjsLib = await import('pdfjs-dist/build/pdf')
+  const arrayBuffer = await file.arrayBuffer()
+  const loadingTask = pdfjsLib.getDocument({
+    data: arrayBuffer,
+    disableWorker: true,
+  })
+  const pdf = await loadingTask.promise
+  const pages = []
+
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+    const page = await pdf.getPage(pageNumber)
+    const content = await page.getTextContent()
+    const lines = groupPdfTextItems(content.items)
+
+    if (lines.length) {
+      pages.push(lines.join('\n'))
+    }
+  }
+
+  await pdf.destroy()
+
+  return {
+    pageCount: pdf.numPages,
+    text: pages.join('\n\n'),
+  }
+}
+
+function groupPdfTextItems(items) {
+  const lines = []
+
+  items.forEach((item) => {
+    const text = cleanImportedLine(item.str || '')
+
+    if (!text) {
+      return
+    }
+
+    const transform = item.transform || []
+    const x = transform[4] || 0
+    const y = transform[5] || 0
+    let line = lines.find((candidate) => Math.abs(candidate.y - y) < 3)
+
+    if (!line) {
+      line = { y, items: [] }
+      lines.push(line)
+    }
+
+    line.items.push({ x, text })
+  })
+
+  return lines
+    .sort((a, b) => b.y - a.y)
+    .map((line) =>
+      line.items
+        .sort((a, b) => a.x - b.x)
+        .map((item) => item.text)
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    )
+    .filter(Boolean)
+}
+
 function splitLines(value = '') {
   return value
     .split('\n')
@@ -1095,6 +1629,52 @@ function App() {
     reader.readAsDataURL(file)
   }
 
+  const importResumeText = (text) => {
+    const importedResume = parseImportedResumeText(text)
+    const importedStats = getImportedResumeStats(importedResume)
+
+    if (!importedStats.length) {
+      return {
+        ok: false,
+        message: '没有识别到可导入的简历内容。',
+      }
+    }
+
+    setResumeLibrary((current) => {
+      const library = normalizeResumeLibrary(current)
+      const activeId = library.items.some(
+        (item) => item.id === library.activeId,
+      )
+        ? library.activeId
+        : library.items[0].id
+      const items = library.items.map((item) => {
+        if (item.id !== activeId) {
+          return item
+        }
+
+        const nextResume = mergeImportedResume(item.resume, importedResume)
+        const nextName = getResumeRecordName(nextResume, item.name)
+
+        return {
+          ...item,
+          name: nextName,
+          updatedAt: new Date().toISOString(),
+          resume: nextResume,
+        }
+      })
+
+      return {
+        activeId,
+        items,
+      }
+    })
+
+    return {
+      ok: true,
+      message: `已套用：${importedStats.join('、')}`,
+    }
+  }
+
   const resetSample = () => {
     setResume(cloneResume(defaultResume))
   }
@@ -1155,6 +1735,7 @@ function App() {
             addContact={addContact}
             removeContact={removeContact}
             uploadAvatar={uploadAvatar}
+            importResumeText={importResumeText}
             updateEntry={updateEntry}
             addEntry={addEntry}
             removeEntry={removeEntry}
@@ -1207,6 +1788,7 @@ function Editor({
   addContact,
   removeContact,
   uploadAvatar,
+  importResumeText,
   updateEntry,
   addEntry,
   removeEntry,
@@ -1243,6 +1825,8 @@ function Editor({
         onDuplicate={duplicateResume}
         onDelete={deleteResume}
       />
+
+      <ImportResumePanel onImportText={importResumeText} />
 
       <section className="editor-section">
         <SectionTitle icon={Palette} title="模板" />
