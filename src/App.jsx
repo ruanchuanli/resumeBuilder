@@ -852,7 +852,11 @@ function parseEducationChunk(lines) {
 function parseEntrySection(lines, parser) {
   return splitEntryChunks(lines)
     .map(parser)
-    .filter((entry) => Object.values(entry).some((value) => value))
+    .filter((entry) =>
+      Object.entries(entry).some(
+        ([key, value]) => key !== 'id' && typeof value === 'string' && value,
+      ),
+    )
 }
 
 function getImportedContacts(text, lines) {
@@ -1049,9 +1053,10 @@ async function extractTextFromPdf(file) {
     disableWorker: true,
   })
   const pdf = await loadingTask.promise
+  const pageCount = pdf.numPages
   const pages = []
 
-  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+  for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
     const page = await pdf.getPage(pageNumber)
     const content = await page.getTextContent()
     const lines = groupPdfTextItems(content.items)
@@ -1064,7 +1069,7 @@ async function extractTextFromPdf(file) {
   await pdf.destroy()
 
   return {
-    pageCount: pdf.numPages,
+    pageCount,
     text: pages.join('\n\n'),
   }
 }

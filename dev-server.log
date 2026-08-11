@@ -1,0 +1,16 @@
+
+┌────────────────────────────────────────────────────────────┐
+│                  npm update check failed                   │
+│            Try running with sudo or get access             │
+│            to the local update config store via            │
+│ sudo chown -R $USER:$(id -gn $USER) C:\Users\27634\.config │
+└────────────────────────────────────────────────────────────┘
+
+> resume-builder@1.0.0 dev D:\mycode\resumeBuilder
+> vite --host 0.0.0.0 "--host" "127.0.0.1" "--port" "5176"
+
+
+  [32m[1mVITE[22m v4.5.3[39m  [2mready in [0m[1m144[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m5176[22m/[39m
+[2m[32m  ➜[39m[22m[2m  press [22m[1mh[22m[2m to show help[22m
