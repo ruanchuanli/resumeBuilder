@@ -578,10 +578,7 @@ function loadResumeLibrary() {
 }
 
 function cleanImportedLine(line = '') {
-  return line
-    .replace(/[｜|]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
+  return line.replace(/[｜|]/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
 function cleanBulletLine(line = '') {
@@ -660,8 +657,7 @@ function getImportedSectionKey(line) {
     },
     {
       key: 'education',
-      pattern:
-        /^(教育背景|教育经历|学历背景|教育经验|教育|education)$/i,
+      pattern: /^(教育背景|教育经历|学历背景|教育经验|教育|education)$/i,
     },
   ]
 
@@ -788,7 +784,9 @@ function parseExperienceChunk(lines) {
       ),
     ) || ''
   const role = cleanImportedLine(
-    removeDateRange(roleLine).replace(company, '').replace(/[，,;；]/g, ' '),
+    removeDateRange(roleLine)
+      .replace(company, '')
+      .replace(/[，,;；]/g, ' '),
   )
   const skipped = [lines[0], roleLine]
   const descriptionLines = getDescriptionLines(lines, skipped)
@@ -809,16 +807,15 @@ function parseProjectChunk(lines) {
   const dates = extractDateRange(text)
   const firstLine = removeDateRange(lines[0] || '')
   const roleLine =
-    lines.find((line) => /(角色|负责|负责人|核心成员|主导|参与)/.test(line)) || ''
+    lines.find((line) => /(角色|负责|负责人|核心成员|主导|参与)/.test(line)) ||
+    ''
   const name = cleanImportedLine(
     firstLine
       .replace(/^(项目名称|项目|作品)[:：\s]*/, '')
       .replace(/[，,;；].*$/, ''),
   )
   const role = cleanImportedLine(
-    roleLine
-      .replace(/^(角色|职责|担任|负责)[:：\s]*/, '')
-      .replace(name, ''),
+    roleLine.replace(/^(角色|职责|担任|负责)[:：\s]*/, '').replace(name, ''),
   )
   const overviewLine =
     lines.find((line) => /^(项目描述|项目背景|项目简介)[:：]/.test(line)) || ''
@@ -851,7 +848,9 @@ function parseEducationChunk(lines) {
   const degreeMatch = text.match(
     /(博士|硕士研究生|硕士|研究生|本科|学士|大专|专科|高中|MBA|Ph\.?D|Master|Bachelor)[^，,;；\n]*/i,
   )
-  const school = cleanImportedLine(schoolMatch?.[1] || removeDateRange(lines[0]))
+  const school = cleanImportedLine(
+    schoolMatch?.[1] || removeDateRange(lines[0]),
+  )
   const degree = cleanImportedLine(degreeMatch?.[0] || '')
   const details = getDescriptionLines(lines, [lines[0]]).join('\n')
 
@@ -933,7 +932,10 @@ function getImportedName(lines) {
         return false
       }
 
-      return /^[\u4e00-\u9fa5]{2,5}$/.test(line) || /^[A-Z][a-z]+(?:\s[A-Z][a-z]+){1,2}$/.test(line)
+      return (
+        /^[\u4e00-\u9fa5]{2,5}$/.test(line) ||
+        /^[A-Z][a-z]+(?:\s[A-Z][a-z]+){1,2}$/.test(line)
+      )
     })
 
   return candidate || ''
@@ -974,10 +976,16 @@ function getImportedSummary(buckets, lines, name, title) {
     : lines
         .slice(0, 16)
         .filter((line) => line !== name && line !== title)
-        .filter((line) => !/电话|邮箱|出生|现居|所在地|求职|应聘|岗位/i.test(line))
+        .filter(
+          (line) => !/电话|邮箱|出生|现居|所在地|求职|应聘|岗位/i.test(line),
+        )
         .filter((line) => line.length >= 12)
 
-  return summaryLines.map(cleanBulletLine).filter(Boolean).slice(0, 5).join('\n')
+  return summaryLines
+    .map(cleanBulletLine)
+    .filter(Boolean)
+    .slice(0, 5)
+    .join('\n')
 }
 
 function getImportedSkills(buckets, lines) {
@@ -996,7 +1004,9 @@ function getImportedSkills(buckets, lines) {
       .filter((skill) => skill && skill.length <= 30 && !hasDateRange(skill)),
   )
 
-  return skills.length ? skills.join(', ') : skillLines.map(cleanBulletLine).join(', ')
+  return skills.length
+    ? skills.join(', ')
+    : skillLines.map(cleanBulletLine).join(', ')
 }
 
 function parseImportedResumeText(text) {
@@ -1055,9 +1065,15 @@ function getImportedResumeStats(importedResume) {
     importedResume.profile.contacts.length ? '联系方式' : '',
     importedResume.summary ? '简介' : '',
     importedResume.skills ? '技能' : '',
-    importedResume.experiences.length ? `${importedResume.experiences.length} 段经历` : '',
-    importedResume.projects.length ? `${importedResume.projects.length} 个项目` : '',
-    importedResume.education.length ? `${importedResume.education.length} 段教育` : '',
+    importedResume.experiences.length
+      ? `${importedResume.experiences.length} 段经历`
+      : '',
+    importedResume.projects.length
+      ? `${importedResume.projects.length} 个项目`
+      : '',
+    importedResume.education.length
+      ? `${importedResume.education.length} 段教育`
+      : '',
   ].filter(Boolean)
 }
 
@@ -1309,7 +1325,9 @@ function formatCurrentResumeForCopy(resume) {
   const customSections = normalizeLayout(normalizedResume.layout).customSections
 
   customSections.forEach((section) => {
-    lines.push(...formatTextBlock(section.title || '自定义模块', section.content))
+    lines.push(
+      ...formatTextBlock(section.title || '自定义模块', section.content),
+    )
   })
 
   return `${lines.join('\n').replace(/\n{3,}/g, '\n\n')}\n`
@@ -1334,6 +1352,106 @@ async function copyTextToClipboard(text) {
   } finally {
     document.body.removeChild(textarea)
   }
+}
+
+function getResumePdfName(resume) {
+  const name = resume.profile.name?.trim()
+  return name ? `${name}-简历.pdf` : '个人简历.pdf'
+}
+
+async function waitForPdfCaptureReady() {
+  if (document.fonts?.ready) {
+    await document.fonts.ready
+  }
+
+  await new Promise((resolve) => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(resolve)
+    })
+  })
+}
+
+async function exportResumePagesToPdf(fileName) {
+  const [{ default: html2canvas }, jspdfModule] = await Promise.all([
+    import('html2canvas'),
+    import('jspdf'),
+  ])
+  const JsPDF =
+    jspdfModule.jsPDF || jspdfModule.default?.jsPDF || jspdfModule.default
+  const pageSheets = Array.from(
+    document.querySelectorAll('.resume-pages .resume-page-shell .resume-sheet'),
+  )
+
+  if (!pageSheets.length || !JsPDF) {
+    throw new Error('No resume pages found')
+  }
+
+  await waitForPdfCaptureReady()
+
+  const pdf = new JsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+    compress: true,
+  })
+  const pageWidth = 210
+  const pageHeight = 297
+  const captureScale = Math.min(
+    2.2,
+    Math.max(1.5, window.devicePixelRatio || 1.5),
+  )
+
+  for (const [index, sheet] of pageSheets.entries()) {
+    const canvas = await html2canvas(sheet, {
+      scale: captureScale,
+      backgroundColor: '#ffffff',
+      useCORS: true,
+      allowTaint: false,
+      logging: false,
+      scrollX: 0,
+      scrollY: -window.scrollY,
+      windowWidth: Math.max(
+        document.documentElement.clientWidth,
+        document.documentElement.scrollWidth,
+      ),
+      windowHeight: Math.max(
+        document.documentElement.clientHeight,
+        document.documentElement.scrollHeight,
+      ),
+      onclone: (clonedDocument) => {
+        const appShell = clonedDocument.querySelector('.app-shell')
+        if (appShell) {
+          appShell.style.zoom = '1'
+          appShell.style.width = 'auto'
+          appShell.style.minHeight = 'auto'
+        }
+
+        clonedDocument
+          .querySelectorAll('.page-label, .pagination-measure')
+          .forEach((element) => {
+            element.style.display = 'none'
+          })
+      },
+    })
+    const imageData = canvas.toDataURL('image/jpeg', 0.96)
+
+    if (index > 0) {
+      pdf.addPage('a4', 'portrait')
+    }
+
+    pdf.addImage(
+      imageData,
+      'JPEG',
+      0,
+      0,
+      pageWidth,
+      pageHeight,
+      undefined,
+      'FAST',
+    )
+  }
+
+  pdf.save(fileName)
 }
 
 function getSkillLevel(index) {
@@ -1478,7 +1596,8 @@ function paginateSections(sectionDescriptors, measurements) {
       32,
       sectionHeight - itemHeights.reduce((sum, height) => sum + height, 0),
     )
-    const sectionTitleHeight = measurements.sectionParts?.[section.key]?.title || 0
+    const sectionTitleHeight =
+      measurements.sectionParts?.[section.key]?.title || 0
     const continuationSectionOverhead = Math.max(
       0,
       sectionOverhead - sectionTitleHeight,
@@ -1549,7 +1668,8 @@ function paginateSections(sectionDescriptors, measurements) {
           (chunk.items.length > 0 || currentPage.sections.length > 0)
         ) {
           moveToNextPage()
-          availableHeight = pages[pages.length - 1].remainingHeight - chunkHeight
+          availableHeight =
+            pages[pages.length - 1].remainingHeight - chunkHeight
         }
 
         let detailCount = 0
@@ -1595,7 +1715,9 @@ function paginateSections(sectionDescriptors, measurements) {
 
         while (
           detailCount > 0 &&
-          isStandaloneTimelineLabel(item.details[detailStart + detailCount - 1]) &&
+          isStandaloneTimelineLabel(
+            item.details[detailStart + detailCount - 1],
+          ) &&
           detailStart + detailCount < item.details.length
         ) {
           detailCount -= 1
@@ -1688,6 +1810,7 @@ function paginateSections(sectionDescriptors, measurements) {
 function App() {
   const [resumeLibrary, setResumeLibrary] = useState(loadResumeLibrary)
   const [hasCopiedResume, setHasCopiedResume] = useState(false)
+  const [isExportingPdfV2, setIsExportingPdfV2] = useState(false)
   const activeResumeItem = useMemo(() => {
     return (
       resumeLibrary.items.find((item) => item.id === resumeLibrary.activeId) ||
@@ -2112,6 +2235,23 @@ function App() {
     }, 50)
   }
 
+  const printPdfV2 = async () => {
+    if (isExportingPdfV2) {
+      return
+    }
+
+    setIsExportingPdfV2(true)
+
+    try {
+      await exportResumePagesToPdf(getResumePdfName(resume))
+    } catch (error) {
+      console.warn('Failed to export PDF V2', error)
+      window.alert('手机导出失败，请稍后重试，或先使用浏览器导出 PDF。')
+    } finally {
+      setIsExportingPdfV2(false)
+    }
+  }
+
   const copyResume = async () => {
     try {
       await copyTextToClipboard(formatCurrentResumeForCopy(resume))
@@ -2140,7 +2280,17 @@ function App() {
           </button>
           <button className="ghost-button" type="button" onClick={copyResume}>
             <Copy size={16} aria-hidden="true" />
-            {hasCopiedResume ? '已复制' : '复制简历'}
+            {hasCopiedResume ? '已复制' : '复制简历文案'}
+          </button>
+          <button
+            className="ghost-button"
+            type="button"
+            onClick={printPdfV2}
+            disabled={isExportingPdfV2}
+            title="适合手机浏览器的纯前端导出"
+          >
+            <Download size={16} aria-hidden="true" />
+            {isExportingPdfV2 ? '生成中' : '手机导出'}
           </button>
           <button className="primary-button" type="button" onClick={printPdf}>
             <Download size={16} aria-hidden="true" />
@@ -2641,7 +2791,11 @@ function ImportResumePanel({ onImportText }) {
     <section className="editor-section import-panel">
       <div className="section-heading-row">
         <SectionTitle icon={UploadCloud} title="PDF 导入" />
-        <span className={statusType === 'error' ? 'import-status error' : 'import-status'}>
+        <span
+          className={
+            statusType === 'error' ? 'import-status error' : 'import-status'
+          }
+        >
           {status}
         </span>
       </div>
@@ -3196,7 +3350,10 @@ function ResumePreview({ resume, skills }) {
       const detailHeights = detailNodes.map(getOuterHeight)
       const headHeight = getOuterHeight(head)
       const detailListHeight = detailList ? getOuterHeight(detailList) : 0
-      const detailHeight = detailHeights.reduce((sum, height) => sum + height, 0)
+      const detailHeight = detailHeights.reduce(
+        (sum, height) => sum + height,
+        0,
+      )
       const itemHeight = getOuterHeight(item)
 
       measurements.items[itemKey] = itemHeight
@@ -3454,7 +3611,12 @@ function SidebarBlock({ title, children }) {
   )
 }
 
-function PreviewSection({ title, children, sectionKey, isContinuation = false }) {
+function PreviewSection({
+  title,
+  children,
+  sectionKey,
+  isContinuation = false,
+}) {
   return (
     <section
       className={
@@ -3481,7 +3643,9 @@ function TimelineItem({
 
   return (
     <div
-      className={isContinuation ? 'timeline-item continuation' : 'timeline-item'}
+      className={
+        isContinuation ? 'timeline-item continuation' : 'timeline-item'
+      }
       data-item-key={itemKey}
     >
       {!isContinuation ? (
@@ -3500,7 +3664,9 @@ function TimelineItem({
         <ul data-detail-list>
           {details.map((detail, index) => (
             <li
-              className={isPlainTimelineDetail(detail) ? 'timeline-detail-plain' : ''}
+              className={
+                isPlainTimelineDetail(detail) ? 'timeline-detail-plain' : ''
+              }
               data-detail-line
               key={`${detail}-${index}`}
             >
