@@ -257,6 +257,7 @@ const defaultResume = {
   layout: {
     order: [],
     hidden: {},
+    titleOverrides: {},
     customSections: [],
   },
 }
@@ -347,12 +348,23 @@ function normalizeLayout(layout = {}) {
       }))
     : []
 
+  const titleOverrides = {}
+
+  if (layout.titleOverrides && typeof layout.titleOverrides === 'object') {
+    Object.entries(layout.titleOverrides).forEach(([sectionKey, title]) => {
+      if (builtInSectionIds.includes(sectionKey) && typeof title === 'string') {
+        titleOverrides[sectionKey] = title
+      }
+    })
+  }
+
   return {
     order: Array.isArray(layout.order)
       ? layout.order.filter((sectionKey) => typeof sectionKey === 'string')
       : [],
     hidden:
       layout.hidden && typeof layout.hidden === 'object' ? layout.hidden : {},
+    titleOverrides,
     customSections,
   }
 }
@@ -392,7 +404,7 @@ function getEffectiveSectionOrder(resume, template) {
   return order
 }
 
-function getSectionLabel(sectionKey, template, customSections = []) {
+function getDefaultSectionLabel(sectionKey, template, customSections = []) {
   if (isCustomSectionKey(sectionKey)) {
     const customSection = customSections.find(
       (section) => section.id === getCustomSectionId(sectionKey),
@@ -402,6 +414,40 @@ function getSectionLabel(sectionKey, template, customSections = []) {
 
   const labels = getSectionLabels(template)
   return labels[sectionKey] || editorSectionLabels[sectionKey] || sectionKey
+}
+
+function getSectionLabel(
+  sectionKey,
+  template,
+  customSections = [],
+  titleOverrides = {},
+) {
+  if (isCustomSectionKey(sectionKey)) {
+    return getDefaultSectionLabel(sectionKey, template, customSections)
+  }
+
+  const override = titleOverrides[sectionKey]
+  return typeof override === 'string' && override.trim()
+    ? override.trim()
+    : getDefaultSectionLabel(sectionKey, template, customSections)
+}
+
+function getSectionTitleInputValue(
+  sectionKey,
+  template,
+  customSections = [],
+  titleOverrides = {},
+) {
+  if (isCustomSectionKey(sectionKey)) {
+    const customSection = customSections.find(
+      (section) => section.id === getCustomSectionId(sectionKey),
+    )
+    return customSection?.title || ''
+  }
+
+  return Object.prototype.hasOwnProperty.call(titleOverrides, sectionKey)
+    ? titleOverrides[sectionKey]
+    : getDefaultSectionLabel(sectionKey, template, customSections)
 }
 
 function getHiddenSectionSet(resume, extraHiddenSections = []) {
@@ -1216,6 +1262,11 @@ function formatResumeEntry(entry, index, fields = []) {
 function formatCurrentResumeForCopy(resume) {
   const normalizedResume = normalizeResume(resume)
   const { profile } = normalizedResume
+  const template = getTemplate(normalizedResume.theme.template)
+  const layout = normalizeLayout(normalizedResume.layout)
+  const customSections = layout.customSections
+  const getCopySectionTitle = (sectionKey) =>
+    getSectionLabel(sectionKey, template, customSections, layout.titleOverrides)
   const lines = []
 
   lines.push(profile.name || '未填写姓名')
@@ -1236,11 +1287,15 @@ function formatCurrentResumeForCopy(resume) {
     })
   }
 
-  lines.push(...formatTextBlock('专业技能', normalizedResume.summary))
-  lines.push(...formatTextBlock('技能栈', normalizedResume.skills))
+  lines.push(
+    ...formatTextBlock(getCopySectionTitle('summary'), normalizedResume.summary),
+  )
+  lines.push(
+    ...formatTextBlock(getCopySectionTitle('skills'), normalizedResume.skills),
+  )
 
   if (normalizedResume.experiences.length) {
-    lines.push('', '工作经历')
+    lines.push('', getCopySectionTitle('experiences'))
     normalizedResume.experiences.forEach((entry, index) => {
       if (index > 0) {
         lines.push('')
@@ -1268,7 +1323,7 @@ function formatCurrentResumeForCopy(resume) {
   }
 
   if (normalizedResume.projects.length) {
-    lines.push('', '项目经历')
+    lines.push('', getCopySectionTitle('projects'))
     normalizedResume.projects.forEach((entry, index) => {
       if (index > 0) {
         lines.push('')
@@ -1296,7 +1351,7 @@ function formatCurrentResumeForCopy(resume) {
   }
 
   if (normalizedResume.education.length) {
-    lines.push('', '教育背景')
+    lines.push('', getCopySectionTitle('education'))
     normalizedResume.education.forEach((entry, index) => {
       if (index > 0) {
         lines.push('')
@@ -1321,8 +1376,6 @@ function formatCurrentResumeForCopy(resume) {
       )
     })
   }
-
-  const customSections = normalizeLayout(normalizedResume.layout).customSections
 
   customSections.forEach((section) => {
     lines.push(
@@ -2085,6 +2138,28 @@ function App() {
     })
   }
 
+  const updateSectionTitle = (sectionKey, title) => {
+    if (isCustomSectionKey(sectionKey)) {
+      updateCustomSection(getCustomSectionId(sectionKey), 'title', title)
+      return
+    }
+
+    setResume((current) => {
+      const layout = normalizeLayout(current.layout)
+
+      return {
+        ...current,
+        layout: {
+          ...layout,
+          titleOverrides: {
+            ...layout.titleOverrides,
+            [sectionKey]: title,
+          },
+        },
+      }
+    })
+  }
+
   const resetSectionOrder = () => {
     setResume((current) => ({
       ...current,
@@ -2325,6 +2400,7 @@ function App() {
             removeEntry={removeEntry}
             moveSection={moveSection}
             toggleSection={toggleSection}
+            updateSectionTitle={updateSectionTitle}
             resetSectionOrder={resetSectionOrder}
             addCustomSection={addCustomSection}
             updateCustomSection={updateCustomSection}
@@ -2370,6 +2446,7 @@ function Editor({
   removeEntry,
   moveSection,
   toggleSection,
+  updateSectionTitle,
   resetSectionOrder,
   addCustomSection,
   updateCustomSection,
@@ -2389,6 +2466,15 @@ function Editor({
     }
     return templates.filter((template) => template.category === activeCategory)
   }, [activeCategory])
+  const layout = normalizeLayout(resume.layout)
+  const customSections = layout.customSections
+  const getEditorSectionTitle = (sectionKey) =>
+    getSectionLabel(
+      sectionKey,
+      activeTemplate,
+      customSections,
+      layout.titleOverrides,
+    )
 
   return (
     <div className="editor-content">
@@ -2465,13 +2551,14 @@ function Editor({
         sectionOrder={sectionOrder}
         onMove={moveSection}
         onToggle={toggleSection}
+        onTitleChange={updateSectionTitle}
         onReset={resetSectionOrder}
         onAddCustom={addCustomSection}
         onRemoveCustom={removeCustomSection}
       />
 
       <CustomSectionsEditor
-        customSections={normalizeLayout(resume.layout).customSections}
+        customSections={customSections}
         updateCustomSection={updateCustomSection}
         removeCustomSection={removeCustomSection}
       />
@@ -2532,7 +2619,7 @@ function Editor({
       </section>
 
       <section className="editor-section">
-        <SectionTitle title="专业技能" />
+        <SectionTitle title={getEditorSectionTitle('summary')} />
         <TextArea
           label="技能描述"
           value={resume.summary}
@@ -2542,7 +2629,7 @@ function Editor({
       </section>
 
       <section className="editor-section">
-        <SectionTitle title="技能栈" />
+        <SectionTitle title={getEditorSectionTitle('skills')} />
         <TextArea
           label="技能"
           value={resume.skills}
@@ -2552,7 +2639,7 @@ function Editor({
       </section>
 
       <Repeater
-        title="工作经历"
+        title={getEditorSectionTitle('experiences')}
         section="experiences"
         entries={resume.experiences}
         addLabel="新增经历"
@@ -2611,7 +2698,7 @@ function Editor({
       </Repeater>
 
       <Repeater
-        title="项目经历"
+        title={getEditorSectionTitle('projects')}
         section="projects"
         entries={resume.projects}
         addLabel="新增项目"
@@ -2671,7 +2758,7 @@ function Editor({
       </Repeater>
 
       <Repeater
-        title="教育背景"
+        title={getEditorSectionTitle('education')}
         section="education"
         entries={resume.education}
         addLabel="新增教育"
@@ -2911,12 +2998,14 @@ function ModuleManager({
   sectionOrder,
   onMove,
   onToggle,
+  onTitleChange,
   onReset,
   onAddCustom,
   onRemoveCustom,
 }) {
   const hidden = getHiddenSectionSet(resume)
-  const customSections = normalizeLayout(resume.layout).customSections
+  const layout = normalizeLayout(resume.layout)
+  const customSections = layout.customSections
 
   return (
     <section className="editor-section">
@@ -2945,9 +3034,18 @@ function ModuleManager({
               key={sectionKey}
             >
               <div className="module-name">
-                <strong>
-                  {getSectionLabel(sectionKey, activeTemplate, customSections)}
-                </strong>
+                <input
+                  type="text"
+                  value={getSectionTitleInputValue(
+                    sectionKey,
+                    activeTemplate,
+                    customSections,
+                    layout.titleOverrides,
+                  )}
+                  onChange={(event) =>
+                    onTitleChange(sectionKey, event.target.value)
+                  }
+                />
                 <span>{customId ? '自定义' : '内置'}</span>
               </div>
               <div className="module-actions">
@@ -3204,27 +3302,29 @@ function buildSectionDescriptors(
   template,
   hiddenSections = [],
 ) {
-  const labels = getSectionLabels(template)
   const order = getEffectiveSectionOrder(resume, template)
   const hidden = getHiddenSectionSet(resume, hiddenSections)
-  const customSections = normalizeLayout(resume.layout).customSections
+  const layout = normalizeLayout(resume.layout)
+  const customSections = layout.customSections
+  const getTitle = (sectionKey) =>
+    getSectionLabel(sectionKey, template, customSections, layout.titleOverrides)
   const sections = {
     summary: {
       key: 'summary',
       kind: 'summary',
-      title: labels.summary,
+      title: getTitle('summary'),
       content: resume.summary,
     },
     skills: {
       key: 'skills',
       kind: 'skills',
-      title: labels.skills,
+      title: getTitle('skills'),
       skills,
     },
     experiences: {
       key: 'experiences',
       kind: 'timeline',
-      title: labels.experiences,
+      title: getTitle('experiences'),
       items: resume.experiences.map((entry) => ({
         key: `experience:${entry.id}`,
         title: entry.company,
@@ -3237,7 +3337,7 @@ function buildSectionDescriptors(
     projects: {
       key: 'projects',
       kind: 'timeline',
-      title: labels.projects,
+      title: getTitle('projects'),
       items: resume.projects.map((entry) => ({
         key: `project:${entry.id}`,
         title: entry.name,
@@ -3249,7 +3349,7 @@ function buildSectionDescriptors(
     education: {
       key: 'education',
       kind: 'timeline',
-      title: labels.education,
+      title: getTitle('education'),
       items: resume.education.map((entry) => ({
         key: `education:${entry.id}`,
         title: entry.school,
@@ -3468,7 +3568,14 @@ function StandardResume({
 
 function SidebarResume({ resume, skills, contactItems, template, sections }) {
   const { profile, theme } = resume
+  const layout = normalizeLayout(resume.layout)
   const labels = getSectionLabels(template)
+  const skillsTitle = getSectionLabel(
+    'skills',
+    template,
+    layout.customSections,
+    layout.titleOverrides,
+  )
   const hidden = getHiddenSectionSet(resume)
 
   return (
@@ -3486,7 +3593,7 @@ function SidebarResume({ resume, skills, contactItems, template, sections }) {
           <ContactList contacts={contactItems} />
         </SidebarBlock>
         {!hidden.has('skills') ? (
-          <SidebarBlock title={labels.skills}>
+          <SidebarBlock title={skillsTitle || labels.skills}>
             <SkillList skills={skills} className="sidebar-skills" />
           </SidebarBlock>
         ) : null}
