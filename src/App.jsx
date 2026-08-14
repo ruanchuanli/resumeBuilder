@@ -170,6 +170,49 @@ const editorSectionLabels = {
   education: '教育背景',
 }
 
+const fieldLabelDefaults = {
+  experienceRole: '岗位',
+  experienceTime: '时间',
+  experienceLocation: '地点',
+  experienceDetails: '工作内容',
+  projectRole: '角色',
+  projectTime: '时间',
+  projectOverview: '项目描述',
+  projectDetails: '项目职责',
+  educationDegree: '学历专业',
+  educationTime: '时间',
+  educationDetails: '补充',
+}
+
+const fieldLabelGroups = [
+  {
+    title: '工作经历',
+    fields: [
+      { key: 'experienceRole', label: '岗位标题' },
+      { key: 'experienceTime', label: '时间标题' },
+      { key: 'experienceLocation', label: '地点标题' },
+      { key: 'experienceDetails', label: '内容标题' },
+    ],
+  },
+  {
+    title: '项目经历',
+    fields: [
+      { key: 'projectRole', label: '角色标题' },
+      { key: 'projectTime', label: '时间标题' },
+      { key: 'projectOverview', label: '描述标题' },
+      { key: 'projectDetails', label: '职责标题' },
+    ],
+  },
+  {
+    title: '教育背景',
+    fields: [
+      { key: 'educationDegree', label: '学历标题' },
+      { key: 'educationTime', label: '时间标题' },
+      { key: 'educationDetails', label: '补充标题' },
+    ],
+  },
+]
+
 const defaultResume = {
   profile: {
     name: '张小可',
@@ -258,6 +301,7 @@ const defaultResume = {
     order: [],
     hidden: {},
     titleOverrides: {},
+    fieldLabels: {},
     customSections: [],
   },
 }
@@ -358,6 +402,19 @@ function normalizeLayout(layout = {}) {
     })
   }
 
+  const fieldLabels = {}
+
+  if (layout.fieldLabels && typeof layout.fieldLabels === 'object') {
+    Object.entries(layout.fieldLabels).forEach(([fieldKey, label]) => {
+      if (
+        Object.prototype.hasOwnProperty.call(fieldLabelDefaults, fieldKey) &&
+        typeof label === 'string'
+      ) {
+        fieldLabels[fieldKey] = label
+      }
+    })
+  }
+
   return {
     order: Array.isArray(layout.order)
       ? layout.order.filter((sectionKey) => typeof sectionKey === 'string')
@@ -365,6 +422,7 @@ function normalizeLayout(layout = {}) {
     hidden:
       layout.hidden && typeof layout.hidden === 'object' ? layout.hidden : {},
     titleOverrides,
+    fieldLabels,
     customSections,
   }
 }
@@ -426,10 +484,11 @@ function getSectionLabel(
     return getDefaultSectionLabel(sectionKey, template, customSections)
   }
 
-  const override = titleOverrides[sectionKey]
-  return typeof override === 'string' && override.trim()
-    ? override.trim()
-    : getDefaultSectionLabel(sectionKey, template, customSections)
+  if (Object.prototype.hasOwnProperty.call(titleOverrides, sectionKey)) {
+    return titleOverrides[sectionKey].trim()
+  }
+
+  return getDefaultSectionLabel(sectionKey, template, customSections)
 }
 
 function getSectionTitleInputValue(
@@ -448,6 +507,16 @@ function getSectionTitleInputValue(
   return Object.prototype.hasOwnProperty.call(titleOverrides, sectionKey)
     ? titleOverrides[sectionKey]
     : getDefaultSectionLabel(sectionKey, template, customSections)
+}
+
+function getFieldLabel(layout, fieldKey) {
+  const normalizedLayout = normalizeLayout(layout)
+
+  if (Object.prototype.hasOwnProperty.call(normalizedLayout.fieldLabels, fieldKey)) {
+    return normalizedLayout.fieldLabels[fieldKey].trim()
+  }
+
+  return fieldLabelDefaults[fieldKey] || fieldKey
 }
 
 function getHiddenSectionSet(resume, extraHiddenSections = []) {
@@ -1215,15 +1284,57 @@ function splitSkills(value = '') {
     .filter(Boolean)
 }
 
-function getProjectDetails(entry) {
+const TIMELINE_LABEL_PREFIX = '__resume_timeline_label__:'
+
+function createTimelineLabelLine(label, value = '') {
+  return `${TIMELINE_LABEL_PREFIX}${label}：${value}`
+}
+
+function getTimelineLabelMatch(text) {
+  const value = String(text || '')
+
+  if (!value.startsWith(TIMELINE_LABEL_PREFIX)) {
+    return null
+  }
+
+  const content = value.slice(TIMELINE_LABEL_PREFIX.length)
+  const match = content.match(/^([^：:\n]+)[：:](.*)$/)
+
+  if (!match) {
+    return null
+  }
+
+  return {
+    label: match[1],
+    value: match[2],
+  }
+}
+
+function getLabeledDetailLines(label, lines, inlineFirst = false) {
+  if (!lines.length) {
+    return []
+  }
+
+  if (!label) {
+    return lines
+  }
+
+  if (inlineFirst) {
+    return [createTimelineLabelLine(label, lines[0]), ...lines.slice(1)]
+  }
+
+  return [createTimelineLabelLine(label), ...lines]
+}
+
+function getProjectDetails(entry, labels = fieldLabelDefaults) {
   const overviewLines = splitLines(entry.overview || '')
   const resultLines = splitLines(entry.description || '')
+  const overviewLabel = labels.projectOverview || fieldLabelDefaults.projectOverview
+  const detailsLabel = labels.projectDetails || fieldLabelDefaults.projectDetails
 
   return [
-    ...overviewLines.map((line, index) =>
-      index === 0 ? `项目描述：${line}` : line,
-    ),
-    ...(resultLines.length ? ['项目职责：', ...resultLines] : []),
+    ...getLabeledDetailLines(overviewLabel, overviewLines, true),
+    ...getLabeledDetailLines(detailsLabel, resultLines),
   ]
 }
 
@@ -1234,7 +1345,7 @@ function formatTextBlock(title, content) {
     return []
   }
 
-  return ['', title, ...lines]
+  return title ? ['', title, ...lines] : ['', ...lines]
 }
 
 function formatResumeEntry(entry, index, fields = []) {
@@ -1267,6 +1378,8 @@ function formatCurrentResumeForCopy(resume) {
   const customSections = layout.customSections
   const getCopySectionTitle = (sectionKey) =>
     getSectionLabel(sectionKey, template, customSections, layout.titleOverrides)
+  const getCopyFieldLabel = (fieldKey) =>
+    getFieldLabel(normalizedResume.layout, fieldKey)
   const lines = []
 
   lines.push(profile.name || '未填写姓名')
@@ -1295,7 +1408,11 @@ function formatCurrentResumeForCopy(resume) {
   )
 
   if (normalizedResume.experiences.length) {
-    lines.push('', getCopySectionTitle('experiences'))
+    const sectionTitle = getCopySectionTitle('experiences')
+    lines.push('')
+    if (sectionTitle) {
+      lines.push(sectionTitle)
+    }
     normalizedResume.experiences.forEach((entry, index) => {
       if (index > 0) {
         lines.push('')
@@ -1309,13 +1426,20 @@ function formatCurrentResumeForCopy(resume) {
           },
           index,
           [
-            { label: '岗位', value: entry.role },
+            { label: getCopyFieldLabel('experienceRole'), value: entry.role },
             {
-              label: '时间',
+              label: getCopyFieldLabel('experienceTime'),
               value: [entry.start, entry.end].filter(Boolean).join(' - '),
             },
-            { label: '地点', value: entry.location },
-            { label: '工作内容', value: entry.description, multiline: true },
+            {
+              label: getCopyFieldLabel('experienceLocation'),
+              value: entry.location,
+            },
+            {
+              label: getCopyFieldLabel('experienceDetails'),
+              value: entry.description,
+              multiline: true,
+            },
           ],
         ),
       )
@@ -1323,7 +1447,11 @@ function formatCurrentResumeForCopy(resume) {
   }
 
   if (normalizedResume.projects.length) {
-    lines.push('', getCopySectionTitle('projects'))
+    const sectionTitle = getCopySectionTitle('projects')
+    lines.push('')
+    if (sectionTitle) {
+      lines.push(sectionTitle)
+    }
     normalizedResume.projects.forEach((entry, index) => {
       if (index > 0) {
         lines.push('')
@@ -1337,13 +1465,17 @@ function formatCurrentResumeForCopy(resume) {
           },
           index,
           [
-            { label: '角色', value: entry.role },
+            { label: getCopyFieldLabel('projectRole'), value: entry.role },
             {
-              label: '时间',
+              label: getCopyFieldLabel('projectTime'),
               value: [entry.start, entry.end].filter(Boolean).join(' - '),
             },
-            { label: '项目描述', value: entry.overview },
-            { label: '项目职责', value: entry.description, multiline: true },
+            { label: getCopyFieldLabel('projectOverview'), value: entry.overview },
+            {
+              label: getCopyFieldLabel('projectDetails'),
+              value: entry.description,
+              multiline: true,
+            },
           ],
         ),
       )
@@ -1351,7 +1483,11 @@ function formatCurrentResumeForCopy(resume) {
   }
 
   if (normalizedResume.education.length) {
-    lines.push('', getCopySectionTitle('education'))
+    const sectionTitle = getCopySectionTitle('education')
+    lines.push('')
+    if (sectionTitle) {
+      lines.push(sectionTitle)
+    }
     normalizedResume.education.forEach((entry, index) => {
       if (index > 0) {
         lines.push('')
@@ -1365,12 +1501,19 @@ function formatCurrentResumeForCopy(resume) {
           },
           index,
           [
-            { label: '学历专业', value: entry.degree },
             {
-              label: '时间',
+              label: getCopyFieldLabel('educationDegree'),
+              value: entry.degree,
+            },
+            {
+              label: getCopyFieldLabel('educationTime'),
               value: [entry.start, entry.end].filter(Boolean).join(' - '),
             },
-            { label: '补充', value: entry.details, multiline: true },
+            {
+              label: getCopyFieldLabel('educationDetails'),
+              value: entry.details,
+              multiline: true,
+            },
           ],
         ),
       )
@@ -1564,7 +1707,8 @@ function getTimelineItemParts(item, measurements) {
 }
 
 function isStandaloneTimelineLabel(text) {
-  return /^项目职责：\s*$/.test(String(text || ''))
+  const labelMatch = getTimelineLabelMatch(text)
+  return Boolean(labelMatch && !labelMatch.value.trim())
 }
 
 function getMinimumDetailCount(details, detailStart) {
@@ -2160,6 +2304,23 @@ function App() {
     })
   }
 
+  const updateFieldLabel = (fieldKey, label) => {
+    setResume((current) => {
+      const layout = normalizeLayout(current.layout)
+
+      return {
+        ...current,
+        layout: {
+          ...layout,
+          fieldLabels: {
+            ...layout.fieldLabels,
+            [fieldKey]: label,
+          },
+        },
+      }
+    })
+  }
+
   const resetSectionOrder = () => {
     setResume((current) => ({
       ...current,
@@ -2401,6 +2562,7 @@ function App() {
             moveSection={moveSection}
             toggleSection={toggleSection}
             updateSectionTitle={updateSectionTitle}
+            updateFieldLabel={updateFieldLabel}
             resetSectionOrder={resetSectionOrder}
             addCustomSection={addCustomSection}
             updateCustomSection={updateCustomSection}
@@ -2447,6 +2609,7 @@ function Editor({
   moveSection,
   toggleSection,
   updateSectionTitle,
+  updateFieldLabel,
   resetSectionOrder,
   addCustomSection,
   updateCustomSection,
@@ -2475,6 +2638,7 @@ function Editor({
       customSections,
       layout.titleOverrides,
     )
+  const getEditorFieldLabel = (fieldKey) => getFieldLabel(resume.layout, fieldKey)
 
   return (
     <div className="editor-content">
@@ -2561,6 +2725,11 @@ function Editor({
         customSections={customSections}
         updateCustomSection={updateCustomSection}
         removeCustomSection={removeCustomSection}
+      />
+
+      <FieldLabelEditor
+        fieldLabels={layout.fieldLabels}
+        onChange={updateFieldLabel}
       />
 
       <section className="editor-section">
@@ -2657,7 +2826,7 @@ function Editor({
                 }
               />
               <TextField
-                label="岗位"
+                label={getEditorFieldLabel('experienceRole')}
                 value={entry.role}
                 onChange={(value) =>
                   updateEntry('experiences', entry.id, 'role', value)
@@ -2679,14 +2848,14 @@ function Editor({
               />
             </div>
             <TextField
-              label="地点"
+              label={getEditorFieldLabel('experienceLocation')}
               value={entry.location}
               onChange={(value) =>
                 updateEntry('experiences', entry.id, 'location', value)
               }
             />
             <TextArea
-              label="亮点"
+              label={getEditorFieldLabel('experienceDetails')}
               value={entry.description}
               rows={5}
               onChange={(value) =>
@@ -2716,7 +2885,7 @@ function Editor({
                 }
               />
               <TextField
-                label="角色"
+                label={getEditorFieldLabel('projectRole')}
                 value={entry.role}
                 onChange={(value) =>
                   updateEntry('projects', entry.id, 'role', value)
@@ -2738,7 +2907,7 @@ function Editor({
               />
             </div>
             <TextArea
-              label="项目描述"
+              label={getEditorFieldLabel('projectOverview')}
               value={entry.overview || ''}
               rows={4}
               onChange={(value) =>
@@ -2746,7 +2915,7 @@ function Editor({
               }
             />
             <TextArea
-              label="项目职责"
+              label={getEditorFieldLabel('projectDetails')}
               value={entry.description}
               rows={5}
               onChange={(value) =>
@@ -2776,7 +2945,7 @@ function Editor({
                 }
               />
               <TextField
-                label="学历专业"
+                label={getEditorFieldLabel('educationDegree')}
                 value={entry.degree}
                 onChange={(value) =>
                   updateEntry('education', entry.id, 'degree', value)
@@ -2798,7 +2967,7 @@ function Editor({
               />
             </div>
             <TextArea
-              label="补充"
+              label={getEditorFieldLabel('educationDetails')}
               value={entry.details}
               rows={3}
               onChange={(value) =>
@@ -3157,6 +3326,35 @@ function CustomSectionsEditor({
   )
 }
 
+function FieldLabelEditor({ fieldLabels, onChange }) {
+  return (
+    <section className="editor-section">
+      <SectionTitle title="字段名称" />
+      <div className="field-label-groups">
+        {fieldLabelGroups.map((group) => (
+          <div className="field-label-group" key={group.title}>
+            <span>{group.title}</span>
+            <div className="field-grid two-columns">
+              {group.fields.map((field) => (
+                <TextField
+                  key={field.key}
+                  label={field.label}
+                  value={
+                    Object.prototype.hasOwnProperty.call(fieldLabels, field.key)
+                      ? fieldLabels[field.key]
+                      : fieldLabelDefaults[field.key]
+                  }
+                  onChange={(value) => onChange(field.key, value)}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 function AvatarUploader({ avatar, onUpload, onRemove }) {
   return (
     <div className="avatar-uploader">
@@ -3308,6 +3506,12 @@ function buildSectionDescriptors(
   const customSections = layout.customSections
   const getTitle = (sectionKey) =>
     getSectionLabel(sectionKey, template, customSections, layout.titleOverrides)
+  const fieldLabels = {
+    experienceDetails: getFieldLabel(resume.layout, 'experienceDetails'),
+    projectOverview: getFieldLabel(resume.layout, 'projectOverview'),
+    projectDetails: getFieldLabel(resume.layout, 'projectDetails'),
+    educationDetails: getFieldLabel(resume.layout, 'educationDetails'),
+  }
   const sections = {
     summary: {
       key: 'summary',
@@ -3329,9 +3533,15 @@ function buildSectionDescriptors(
         key: `experience:${entry.id}`,
         title: entry.company,
         subtitle: entry.role,
+        subtitleLabel: getFieldLabel(resume.layout, 'experienceRole'),
+        metaLabel: getFieldLabel(resume.layout, 'experienceTime'),
         meta: [entry.start, entry.end].filter(Boolean).join(' - '),
+        extraLabel: getFieldLabel(resume.layout, 'experienceLocation'),
         extra: entry.location,
-        details: splitLines(entry.description),
+        details: getLabeledDetailLines(
+          fieldLabels.experienceDetails,
+          splitLines(entry.description),
+        ),
       })),
     },
     projects: {
@@ -3342,8 +3552,10 @@ function buildSectionDescriptors(
         key: `project:${entry.id}`,
         title: entry.name,
         subtitle: entry.role,
+        subtitleLabel: getFieldLabel(resume.layout, 'projectRole'),
+        metaLabel: getFieldLabel(resume.layout, 'projectTime'),
         meta: [entry.start, entry.end].filter(Boolean).join(' - '),
-        details: getProjectDetails(entry),
+        details: getProjectDetails(entry, fieldLabels),
       })),
     },
     education: {
@@ -3354,8 +3566,13 @@ function buildSectionDescriptors(
         key: `education:${entry.id}`,
         title: entry.school,
         subtitle: entry.degree,
+        subtitleLabel: getFieldLabel(resume.layout, 'educationDegree'),
+        metaLabel: getFieldLabel(resume.layout, 'educationTime'),
         meta: [entry.start, entry.end].filter(Boolean).join(' - '),
-        details: splitLines(entry.details),
+        details: getLabeledDetailLines(
+          fieldLabels.educationDetails,
+          splitLines(entry.details),
+        ),
       })),
     },
   }
@@ -3569,7 +3786,6 @@ function StandardResume({
 function SidebarResume({ resume, skills, contactItems, template, sections }) {
   const { profile, theme } = resume
   const layout = normalizeLayout(resume.layout)
-  const labels = getSectionLabels(template)
   const skillsTitle = getSectionLabel(
     'skills',
     template,
@@ -3593,7 +3809,7 @@ function SidebarResume({ resume, skills, contactItems, template, sections }) {
           <ContactList contacts={contactItems} />
         </SidebarBlock>
         {!hidden.has('skills') ? (
-          <SidebarBlock title={skillsTitle || labels.skills}>
+          <SidebarBlock title={skillsTitle}>
             <SkillList skills={skills} className="sidebar-skills" />
           </SidebarBlock>
         ) : null}
@@ -3637,8 +3853,11 @@ function SectionContent({ section }) {
       itemKey={item.key}
       title={item.title}
       subtitle={item.subtitle}
+      subtitleLabel={item.subtitleLabel}
       meta={item.meta}
+      metaLabel={item.metaLabel}
       extra={item.extra}
+      extraLabel={item.extraLabel}
       details={item.details}
       isContinuation={item.isContinuation}
     />
@@ -3712,7 +3931,7 @@ function ContactList({ contacts }) {
 function SidebarBlock({ title, children }) {
   return (
     <section className="sidebar-block">
-      <h3>{title}</h3>
+      {title ? <h3>{title}</h3> : null}
       {children}
     </section>
   )
@@ -3731,7 +3950,7 @@ function PreviewSection({
       }
       data-section-key={sectionKey}
     >
-      {isContinuation ? null : <h3 data-section-title>{title}</h3>}
+      {isContinuation || !title ? null : <h3 data-section-title>{title}</h3>}
       <div>{children}</div>
     </section>
   )
@@ -3741,8 +3960,11 @@ function TimelineItem({
   itemKey,
   title,
   subtitle,
+  subtitleLabel,
   meta,
+  metaLabel,
   extra,
+  extraLabel,
   details,
   isContinuation = false,
 }) {
@@ -3759,11 +3981,34 @@ function TimelineItem({
         <div className="timeline-head" data-item-head>
           <div>
             <h4>{heading}</h4>
-            {subtitle && title ? <p>{subtitle}</p> : null}
+            {subtitle && title ? (
+              <p>
+                {subtitleLabel ? (
+                  <span className="timeline-inline-label">
+                    {subtitleLabel}：
+                  </span>
+                ) : null}
+                {subtitle}
+              </p>
+            ) : null}
           </div>
           <div className="timeline-meta">
-            {meta ? <span>{meta}</span> : null}
-            {extra ? <span>{extra}</span> : null}
+            {meta ? (
+              <span>
+                {metaLabel ? (
+                  <span className="timeline-inline-label">{metaLabel}：</span>
+                ) : null}
+                {meta}
+              </span>
+            ) : null}
+            {extra ? (
+              <span>
+                {extraLabel ? (
+                  <span className="timeline-inline-label">{extraLabel}：</span>
+                ) : null}
+                {extra}
+              </span>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -3787,21 +4032,20 @@ function TimelineItem({
 }
 
 function isPlainTimelineDetail(text) {
-  return /^(项目描述|项目职责)：/.test(String(text || ''))
+  return Boolean(getTimelineLabelMatch(text))
 }
 
 function TimelineDetailText({ text }) {
-  const value = String(text || '')
-  const match = value.match(/^(项目描述|项目职责)：(.*)$/)
+  const match = getTimelineLabelMatch(text)
 
   if (!match) {
-    return value
+    return String(text || '')
   }
 
   return (
     <>
-      <strong className="timeline-detail-label">{match[1]}：</strong>
-      {match[2]}
+      <strong className="timeline-detail-label">{match.label}：</strong>
+      {match.value}
     </>
   )
 }

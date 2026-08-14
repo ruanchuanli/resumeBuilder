@@ -1,13 +1,8 @@
 :root {
   color: #1f2933;
   font-family:
-    'Microsoft YaHei',
-    'PingFang SC',
-    'Noto Sans CJK SC',
-    'Source Han Sans SC',
-    'SimSun',
-    Arial,
-    sans-serif;
+    'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Source Han Sans SC',
+    'SimSun', Arial, sans-serif;
   line-height: 1.5;
   background: #f3f5f7;
   text-rendering: optimizeLegibility;
@@ -504,6 +499,22 @@ button {
   flex: 1 1 160px;
 }
 
+.field-label-groups {
+  display: grid;
+  gap: 14px;
+}
+
+.field-label-group {
+  display: grid;
+  gap: 10px;
+}
+
+.field-label-group > span {
+  color: #475467;
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .contact-heading {
   margin: 16px 0 10px;
 }
@@ -922,6 +933,11 @@ button {
   line-height: 1.35;
   text-align: right;
   white-space: nowrap;
+}
+
+.timeline-inline-label {
+  color: #667085;
+  font-weight: 900;
 }
 
 .timeline-item ul {
@@ -1809,7 +1825,7 @@ button {
   content: '';
   position: absolute;
   top: 4px;
-  left: 0;
+  left: -2px;
   display: block;
   width: 11px;
   height: 11px;
@@ -2217,13 +2233,8 @@ button {
   .resume-sheet,
   .resume-sheet * {
     font-family:
-      'Microsoft YaHei',
-      'PingFang SC',
-      'Noto Sans CJK SC',
-      'Source Han Sans SC',
-      'SimSun',
-      Arial,
-      sans-serif !important;
+      'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC',
+      'Source Han Sans SC', 'SimSun', Arial, sans-serif !important;
     font-variant-ligatures: none;
     text-rendering: geometricPrecision;
   }
